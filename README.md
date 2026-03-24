@@ -2,6 +2,9 @@
 
 A **persistent, multi-agent memory system** built on the **Model Context Protocol (MCP)**, designed to give AI agents long-term memory, shared context, and structured learning across projects.
 
+![GitHub stars](https://img.shields.io/github/stars/coderooz/Local-MCP-Memory-Server)
+![Issues](https://img.shields.io/github/issues/coderooz/Local-MCP-Memory-Server)
+![License](https://img.shields.io/github/license/coderooz/Local-MCP-Memory-Server)
 ---
 
 ## 🚀 Overview
@@ -312,6 +315,19 @@ No need for per-project config.
 * Conflict resolution system
 * Self-healing server (auto-restart + health checks)
 * Agent feedback loops
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions!
+
+If you're interested in:
+- AI systems
+- MCP / agent tooling
+- distributed memory systems
+
+👉 Check issues or open a discussion
 
 ---
 

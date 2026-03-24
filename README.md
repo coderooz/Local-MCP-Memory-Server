@@ -318,6 +318,18 @@ No need for per-project config.
 
 ---
 
+## 🧠 Vision
+
+We are building a system where AI agents:
+
+- remember across sessions
+- learn from past actions
+- collaborate through shared memory
+
+This project is a step toward autonomous, evolving AI systems.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions!

@@ -1,9 +1,20 @@
 #!/usr/bin/env node
 
-const readline = require("readline");
+import readline from "readline";
+import path from "path";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
 
-// Node 18+ has global fetch. If not, install node-fetch and uncomment:
-// const fetch = require("node-fetch");
+import { startMemoryServer } from "./startMemoryServer.js";
+import { GLOBAL_AGENT_INSTRUCTION } from "./agent-instruction.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({
+  path: path.join(__dirname, ".env"),
+  quiet: true
+});
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -11,20 +22,17 @@ const rl = readline.createInterface({
   terminal: false
 });
 
-/**
- * 🔧 CONFIG (ENV-DRIVEN)
- */
 const CONFIG = {
-  agent: process.env.MCP_AGENT || "roo-architect",
+  agent: process.env.MCP_AGENT || "unknown",
   project: process.env.MCP_PROJECT || "default-project",
   scope: process.env.MCP_SCOPE || "project",
-  serverUrl: process.env.MCP_SERVER_URL || "http://localhost:4000"
+  serverUrl:
+    process.env.MCP_SERVER_URL ||
+    `http://localhost:${process.env.PORT || 4000}`
 };
 
-/**
- * ❌ NEVER log to stdout
- * ✅ Safe logging via API
- */
+const memoryServerReady = startMemoryServer();
+
 async function logMCPError(error, context = {}) {
   try {
     await fetch(`${CONFIG.serverUrl}/log`, {
@@ -33,18 +41,60 @@ async function logMCPError(error, context = {}) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        type: "mcp_error",
+        type: "error",
         message: error.message,
         stack: error.stack,
-        context
+        context: {
+          ...context,
+          agent: CONFIG.agent,
+          project: CONFIG.project
+        }
       })
     });
   } catch {}
 }
 
-/**
- * ✅ MCP Response Helper
- */
+async function parseResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  return response.text();
+}
+
+async function waitForServer(url, retries = 10) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fetch(url);
+      return;
+    } catch {
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  throw new Error("Memory server not reachable");
+}
+
+async function callMemoryApi(endpoint, options = {}) {
+  await memoryServerReady;
+  await waitForServer(CONFIG.serverUrl);
+
+  const response = await fetch(`${CONFIG.serverUrl}${endpoint}`, options);
+  const payload = await parseResponse(response);
+
+  if (!response.ok) {
+    const message =
+      typeof payload === "string"
+        ? payload
+        : payload?.error || `Request failed with status ${response.status}`;
+
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
 function respond(id, result) {
   process.stdout.write(
     JSON.stringify({
@@ -68,17 +118,126 @@ function respondError(id, code, message) {
   );
 }
 
-/**
- * 🔁 Handle MCP Requests
- */
+function getTools() {
+  return [
+    {
+      name: "store_context",
+      description: "Store persistent memory such as architecture decisions, rules, or notes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description: "The memory content to store"
+          }
+        },
+        required: ["content"]
+      }
+    },
+    {
+      name: "search_context",
+      description: "Search stored memory using a query string.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query to find relevant memory"
+          }
+        },
+        required: ["query"]
+      }
+    },
+    {
+      name: "log_action",
+      description: "Log an action such as a code change or fix for traceability.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          actionType: {
+            type: "string",
+            description: "Type of action (e.g., create, update, fix)"
+          },
+          target: {
+            type: "string",
+            description: "Target of the action (file, API, component)"
+          },
+          summary: {
+            type: "string",
+            description: "Short summary of what changed"
+          },
+          contextRefs: {
+            type: "array",
+            items: { type: "string" },
+            description: "Related context IDs"
+          }
+        },
+        required: ["actionType", "target", "summary"]
+      }
+    },
+    {
+      name: "get_full_context",
+      description: "Retrieve a context along with all related actions.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Context ID"
+          }
+        },
+        required: ["id"]
+      }
+    },
+    {
+      name: "start_session",
+      description: "Start a new working session for tracking agent activity.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            description: "Session status (active, paused, completed)"
+          }
+        },
+        required: ["status"]
+      }
+    },
+    {
+      name: "get_agent_instructions",
+      description: "Retrieve the global system instruction for agent behavior.",
+      inputSchema: {
+        type: "object",
+        properties: {}
+      }
+    },
+    {
+      name: "get_logs",
+      description: "Retrieve system logs (errors, info, debug)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            description: "Filter by log type (error, info)"
+          },
+          limit: {
+            type: "number",
+            description: "Number of logs to return"
+          }
+        }
+      }
+    }
+  ];
+}
+
 rl.on("line", async (line) => {
   try {
     const request = JSON.parse(line);
 
-    /**
-     * 🔌 INITIALIZE
-     */
     if (request.method === "initialize") {
+      await memoryServerReady;
+
       return respond(request.id, {
         protocolVersion: "2024-11-05",
         capabilities: {
@@ -90,116 +249,28 @@ rl.on("line", async (line) => {
           name: "mcp-memory-server",
           version: "1.0.0",
           description: "Persistent multi-agent memory system for AI agents",
-          author: "Coderooz",
-        }
+          author: "Ranit Saha (Coderooz)"
+        },
+        instructions: GLOBAL_AGENT_INSTRUCTION,
+        
       });
     }
 
-    /**
-     * 🫀 PING
-     */
     if (request.method === "ping") {
       return respond(request.id, {});
     }
 
-    /**
-     * 📦 LIST TOOLS
-     */
     if (request.method === "tools/list") {
       return respond(request.id, {
-        tools: [
-          {
-            name: "store_context",
-            description: "Store persistent memory such as architecture decisions, rules, or notes.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                content: { 
-                  type: "string",
-                  description: "The memory content to store"
-                }
-              },
-              required: ["content"]
-            }
-          },
-          {
-            name: "search_context",
-            description: "Search stored memory using a query string.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                query: { 
-                  type: "string",
-                  description: "Search query to find relevant memory"
-                }
-              },
-              required: ["query"]
-            }
-          },
-          {
-            name: "log_action",
-            description: "Log an action such as a code change or fix for traceability.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                actionType: {
-                  type: "string",
-                  description: "Type of action (e.g., create, update, fix)"
-                },
-                target: {
-                  type: "string",
-                  description: "Target of the action (file, API, component)"
-                },
-                summary: {
-                  type: "string",
-                  description: "Short summary of what changed"
-                },
-                contextRefs: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Related context IDs"
-                }
-              },
-              required: ["actionType", "target", "summary"]
-            }
-          },
-          {
-            name: "get_full_context",
-            description: "Retrieve a context along with all related actions.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                id: { type: "string", description: "Context ID" },
-              },
-              required: ["id"]
-            }
-          },
-          {
-            name: "start_session",
-            description: "Start a new working session for tracking agent activity.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                status: { type: "string", description: "Session status (active, paused, completed)" },
-              },
-              required: ["status"]
-            }
-          }
-        ]
+        tools: getTools()
       });
     }
 
-    /**
-     * ⚡ TOOL EXECUTION
-     */
     if (request.method === "tools/call") {
       const { name, arguments: args = {} } = request.params || {};
 
-      /**
-       * 🧠 STORE CONTEXT
-       */
       if (name === "store_context") {
-        const res = await fetch(`${CONFIG.serverUrl}/context`, {
+        const data = await callMemoryApi("/context", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -210,23 +281,18 @@ rl.on("line", async (line) => {
           })
         });
 
-        const data = await res.json();
-
         return respond(request.id, {
           content: [
             {
               type: "text",
-              text: `✅ Stored memory\nID: ${data.context.id}`
+              text: `Stored memory\nID: ${data.context.id}`
             }
           ]
         });
       }
 
-      /**
-       * 🔍 SEARCH CONTEXT
-       */
       if (name === "search_context") {
-        const res = await fetch(`${CONFIG.serverUrl}/context/search`, {
+        const data = await callMemoryApi("/context/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -236,25 +302,20 @@ rl.on("line", async (line) => {
           })
         });
 
-        const data = await res.json();
-
         return respond(request.id, {
           content: [
             {
               type: "text",
               text: data.length
-                ? data.map(d => `• ${d.content}`).join("\n")
+                ? data.map((entry) => `- ${entry.content}`).join("\n")
                 : "No memory found."
             }
           ]
         });
       }
 
-      /**
-       * ⚡ LOG ACTION
-       */
       if (name === "log_action") {
-        const res = await fetch(`${CONFIG.serverUrl}/action`, {
+        const data = await callMemoryApi("/action", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -267,27 +328,18 @@ rl.on("line", async (line) => {
           })
         });
 
-        const data = await res.json();
-
         return respond(request.id, {
           content: [
             {
               type: "text",
-              text: `⚡ Action logged\nID: ${data.action.id}`
+              text: `Action logged\nID: ${data.action.id}`
             }
           ]
         });
       }
 
-      /**
-       * 📦 GET FULL CONTEXT
-       */
       if (name === "get_full_context") {
-        const res = await fetch(
-          `${CONFIG.serverUrl}/context/${args.id}/full`
-        );
-
-        const data = await res.json();
+        const data = await callMemoryApi(`/context/${args.id}/full`);
 
         return respond(request.id, {
           content: [
@@ -299,11 +351,8 @@ rl.on("line", async (line) => {
         });
       }
 
-      /**
-       * 🧭 START SESSION
-       */
       if (name === "start_session") {
-        const res = await fetch(`${CONFIG.serverUrl}/session`, {
+        const data = await callMemoryApi("/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -313,13 +362,52 @@ rl.on("line", async (line) => {
           })
         });
 
-        const data = await res.json();
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: `Session started\nID: ${data.session.sessionId}`
+            }
+          ]
+        });
+      }
+
+      if (name === "get_agent_instructions") {
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  version: "1.0.0",
+                  lastUpdated: new Date().toISOString(),
+                  instruction: GLOBAL_AGENT_INSTRUCTION
+                },
+                null,
+                2
+              )
+            }
+          ]
+        });
+      }
+
+      if (name === "get_logs") {
+        const { type, limit = 20 } = args;
+        const query = type ? { type } : {};
+
+        const data = await callMemoryApi("/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, limit })
+        });
 
         return respond(request.id, {
           content: [
             {
               type: "text",
-              text: `🧭 Session started\nID: ${data.session.sessionId}`
+              text: data.length
+                ? data.map((log) => `[${log.type}] ${log.message}`).join("\n")
+                : "No logs found"
             }
           ]
         });
@@ -327,12 +415,14 @@ rl.on("line", async (line) => {
 
       return respondError(request.id, -32601, `Unknown tool: ${name}`);
     }
-  } catch (err) {
-    await logMCPError(err, { rawInput: line });
+  } catch (error) {
+    await logMCPError(error, { rawInput: line });
+
     try {
       const request = JSON.parse(line);
+
       if (request && Object.prototype.hasOwnProperty.call(request, "id")) {
-        return respondError(request.id, -32603, err.message || "Internal error");
+        return respondError(request.id, -32603, error.message || "Internal error");
       }
     } catch {}
   }

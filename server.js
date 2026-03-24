@@ -1,54 +1,97 @@
-require("dotenv").config();
-const express = require("express");
-const { MongoClient } = require("mongodb");
+#!/usr/bin/env node
 
-const { initLogger, logError, logInfo } = require("./logger");
+import dotenv from "dotenv";
+import express from "express";
+import { MongoClient } from "mongodb";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const {
-  ContextModel,
+import { initLogger, logError, logInfo } from "./logger.js";
+import {
   ActionModel,
-  SessionModel,
+  ContextModel,
   MemoryQueryBuilder,
+  SessionModel,
   normalizeMemory
-} = require("./mcp.model");
+} from "./mcp.model.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({
+  path: path.join(__dirname, ".env"),
+  quiet: true
+});
+
+const DB_NAME = process.env.MONGO_DB_NAME || "mcp_memory";
+const DEFAULT_PORT = Number(process.env.PORT || 4000);
 
 const app = express();
 app.use(express.json());
 
-const client = new MongoClient(process.env.MONGO_URI);
-let db;
+let client = null;
+let db = null;
+let server = null;
+let startupPromise = null;
 
-/**
- * ============================
- * INIT DB
- * ============================
- */
-async function init() {
-  try {
-    await client.connect();
-    db = client.db("mcp_memory");
-
-    initLogger(db);
-    await logInfo("MongoDB connected");
-
-    console.log("MongoDB connected");
-  } catch (err) {
-    console.error("MongoDB connection error:", err);
-    process.exit(1);
+function getDb() {
+  if (!db) {
+    throw new Error("Database connection is not ready.");
   }
-}
-init();
 
-/**
- * ============================
- * 🧠 CONTEXT
- * ============================
- */
+  return db;
+}
+
+async function ensureIndexes(database) {
+  await Promise.all([
+    database.collection("contexts").createIndex({ id: 1 }, { unique: true }),
+    database.collection("contexts").createIndex({
+      content: "text",
+      summary: "text",
+      tags: "text"
+    }),
+    database.collection("actions").createIndex({ id: 1 }, { unique: true }),
+    database.collection("actions").createIndex({ contextRefs: 1 }),
+    database.collection("sessions").createIndex({ sessionId: 1 }, { unique: true }),
+    database.collection("logs").createIndex({ createdAt: -1 })
+  ]);
+}
+
+function rankSearchResults(results, query) {
+  const now = new Date();
+  const queryWords = String(query || "")
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return results
+    .map((item) => {
+      let score = 0;
+      const content = item.content?.toLowerCase() || "";
+
+      if (queryWords.length) {
+        const matches = queryWords.filter((word) => content.includes(word)).length;
+        score += matches * 2;
+      }
+
+      score += (item.importance || 3) * 2;
+
+      const ageHours = (now - new Date(item.createdAt)) / (1000 * 60 * 60);
+      score += Math.max(0, 5 - ageHours / 24);
+
+      score += Math.log((item.accessCount || 0) + 1);
+
+      return { ...item, score };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
 app.post("/context", async (req, res) => {
   try {
     const context = new ContextModel(req.body);
 
-    await db.collection("contexts").insertOne(normalizeMemory(context));
+    await getDb().collection("contexts").insertOne(normalizeMemory(context));
 
     await logInfo("Context stored", {
       agent: context.agent,
@@ -57,31 +100,29 @@ app.post("/context", async (req, res) => {
     });
 
     res.json({ success: true, context });
-  } catch (err) {
-    await logError(err, { route: "/context", body: req.body });
-
-    res.status(500).json({
-      success: false,
-      error: err.message
+  } catch (error) {
+    await logError(error, {
+      route: "/context",
+      agent: req.body?.agent,
+      project: req.body?.project
     });
+
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * 🔍 SEARCH
- */
 app.post("/context/search", async (req, res) => {
   try {
     const {
       agent,
       project,
-      query,
+      query = "",
       scope = "project",
       includeGlobal = true,
       limit = 10
     } = req.body;
 
-    const mongoQuery = MemoryQueryBuilder.build({
+    const baseQuery = MemoryQueryBuilder.build({
       agent,
       project,
       query,
@@ -89,30 +130,40 @@ app.post("/context/search", async (req, res) => {
       includeGlobal
     });
 
-    const results = await db
+    let results = await getDb()
       .collection("contexts")
-      .find(mongoQuery)
-      .sort({ createdAt: -1 })
-      .limit(limit)
+      .find(baseQuery)
+      .limit(50)
       .toArray();
 
-    res.json(results);
-  } catch (err) {
-    await logError(err, { route: "/context/search" });
+    const finalResults = rankSearchResults(results, query).slice(0, limit);
+    const ids = finalResults.map((result) => result.id);
 
-    res.status(500).json({
-      success: false,
-      error: err.message
+    if (ids.length) {
+      await getDb().collection("contexts").updateMany(
+        { id: { $in: ids } },
+        {
+          $inc: { accessCount: 1 },
+          $set: { lastAccessedAt: new Date() }
+        }
+      );
+    }
+
+    res.json(finalResults);
+  } catch (error) {
+    await logError(error, {
+      route: "/context/search",
+      agent: req.body?.agent,
+      project: req.body?.project
     });
+
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * FULL CONTEXT
- */
 app.get("/context/:id/full", async (req, res) => {
   try {
-    const context = await db
+    const context = await getDb()
       .collection("contexts")
       .findOne({ id: req.params.id });
 
@@ -123,145 +174,169 @@ app.get("/context/:id/full", async (req, res) => {
       });
     }
 
-    const actions = await db
+    const actions = await getDb()
       .collection("actions")
       .find({ contextRefs: context.id })
       .toArray();
 
     res.json({ context, actions });
-  } catch (err) {
-    await logError(err, { route: "/context/:id/full" });
-
-    res.status(500).json({
-      success: false,
-      error: err.message
+  } catch (error) {
+    await logError(error, {
+      route: "/context/:id/full",
+      contextId: req.params.id
     });
+
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * ============================
- * ⚡ ACTION
- * ============================
- */
 app.post("/action", async (req, res) => {
   try {
     const action = new ActionModel(req.body);
 
-    await db.collection("actions").insertOne(normalizeMemory(action));
-
-    await logInfo("Action stored", {
-      agent: action.agent,
-      project: action.project,
-      type: action.actionType
-    });
+    await getDb().collection("actions").insertOne(normalizeMemory(action));
 
     res.json({ success: true, action });
-  } catch (err) {
-    await logError(err, { route: "/action" });
-
-    res.status(500).json({
-      success: false,
-      error: err.message
+  } catch (error) {
+    await logError(error, {
+      route: "/action",
+      agent: req.body?.agent,
+      project: req.body?.project
     });
+
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * ============================
- * 🧭 SESSION
- * ============================
- */
 app.post("/session", async (req, res) => {
   try {
     const session = new SessionModel(req.body);
 
-    await db.collection("sessions").insertOne(normalizeMemory(session));
+    await getDb().collection("sessions").insertOne(normalizeMemory(session));
 
     res.json({ success: true, session });
-  } catch (err) {
-    await logError(err, { route: "/session" });
-
-    res.status(500).json({
-      success: false,
-      error: err.message
+  } catch (error) {
+    await logError(error, {
+      route: "/session",
+      agent: req.body?.agent,
+      project: req.body?.project
     });
+
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.get("/session/:id", async (req, res) => {
+app.post("/logs", async (req, res) => {
   try {
-    const session = await db
-      .collection("sessions")
-      .findOne({ sessionId: req.params.id });
+    const { query = {}, limit = 20 } = req.body;
 
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: "Session not found"
-      });
-    }
+    const logs = await getDb()
+      .collection("logs")
+      .find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
 
-    res.json(session);
-  } catch (err) {
-    await logError(err, { route: "/session/:id" });
-
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
+    res.json(logs);
+  } catch (error) {
+    await logError(error, { route: "/logs" });
+    res.status(500).json({ error: error.message });
   }
 });
 
-/**
- * ============================
- * 🪵 LOGS
- * ============================
- */
 app.post("/log", async (req, res) => {
   try {
-    await db.collection("logs").insertOne({
-      ...req.body,
-      createdAt: new Date()
-    });
+    const { type, message, stack, context } = req.body;
+
+    if (type === "error") {
+      await logError(new Error(message), context);
+    } else {
+      await logInfo(message, context);
+    }
 
     res.json({ success: true });
-  } catch {
-    res.json({ success: false });
+  
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-/**
- * ============================
- * ❤️ HEALTH
- * ============================
- */
-app.get("/", (req, res) => {
-  res.send("MCP Memory Server Running 🚀");
+app.get("/", (_req, res) => {
+  res.send("MCP Memory Server Running");
 });
 
-/**
- * GLOBAL ERROR HANDLER
- */
-app.use(async (err, req, res, next) => {
-  await logError(err, {
-    route: req.path,
-    method: req.method
+export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) {
+  if (server) {
+    return { app, db: getDb(), server, port };
+  }
+
+  if (!startupPromise) {
+    startupPromise = (async () => {
+      client = new MongoClient(process.env.MONGO_URI);
+      await client.connect();
+
+      db = client.db(DB_NAME);
+      initLogger(db);
+
+      await ensureIndexes(db);
+      await logInfo("MongoDB connected", { dbName: DB_NAME });
+
+      server = await new Promise((resolve, reject) => {
+        const listener = app.listen(port, () => resolve(listener));
+        listener.on("error", reject);
+      });
+
+      if (!silent) {
+        process.stderr.write(`MCP Memory Server running on port ${port}\n`);
+      }
+
+      return { app, db, server, port };
+    })().catch(async (error) => {
+      startupPromise = null;
+      db = null;
+      server = null;
+
+      if (client) {
+        try {
+          await client.close();
+        } catch {}
+      }
+
+      client = null;
+      throw error;
+    });
+  }
+
+  return startupPromise;
+}
+
+export async function stopServer() {
+  if (server?.listening) {
+    await new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+
+  if (client) {
+    await client.close();
+  }
+
+  client = null;
+  db = null;
+  server = null;
+  startupPromise = null;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  startServer().catch((error) => {
+    console.error("Failed to start MCP Memory Server:", error);
+    process.exit(1);
   });
-
-  res.status(500).json({
-    success: false,
-    error: "Internal Server Error"
-  });
-});
-
-/**
- * ============================
- * 🚀 START
- * ============================
- */
-const PORT = process.env.PORT || 4000;
-
-app.listen(PORT, () => {
-  console.log(`MCP Memory Server running on port ${PORT}`);
-});
+}

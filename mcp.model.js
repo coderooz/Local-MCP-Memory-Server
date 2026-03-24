@@ -1,19 +1,12 @@
-const { v4: uuidv4 } = require("uuid");
+import { v4 as uuidv4 } from "uuid";
 
-/**
- * Memory Scope Types
- * Controls visibility across agents/projects
- */
-const MEMORY_SCOPE = {
-  PRIVATE: "private",   // only same agent
-  PROJECT: "project",   // all agents in same project
-  GLOBAL: "global"      // all agents everywhere
+export const MEMORY_SCOPE = {
+  PRIVATE: "private",
+  PROJECT: "project",
+  GLOBAL: "global"
 };
 
-/**
- * Base Model
- */
-class BaseModel {
+export class BaseModel {
   constructor(data = {}) {
     this.id = data.id || uuidv4();
 
@@ -29,14 +22,11 @@ class BaseModel {
     this.tags = data.tags || [];
     this.metadata = data.metadata || {};
 
-    this.version = 1;
+    this.version = data.version || 1;
   }
 }
 
-/**
- * Context Memory (Knowledge)
- */
-class ContextModel extends BaseModel {
+export class ContextModel extends BaseModel {
   constructor(data = {}) {
     super(data);
 
@@ -49,18 +39,13 @@ class ContextModel extends BaseModel {
     this.relatedContexts = data.relatedContexts || [];
     this.relatedActions = data.relatedActions || [];
 
-    this.score = data.score || {
-      importance: 0.5,
-      recency: 0.5,
-      usage: 0
-    };
+    this.importance = data.importance ?? 3;
+    this.accessCount = data.accessCount || 0;
+    this.lastAccessedAt = data.lastAccessedAt || null;
   }
 }
 
-/**
- * Action Memory (Experience)
- */
-class ActionModel extends BaseModel {
+export class ActionModel extends BaseModel {
   constructor(data = {}) {
     super(data);
 
@@ -82,15 +67,11 @@ class ActionModel extends BaseModel {
   }
 }
 
-/**
- * Session Memory
- */
-class SessionModel extends BaseModel {
+export class SessionModel extends BaseModel {
   constructor(data = {}) {
     super(data);
 
     this.sessionId = data.sessionId || uuidv4();
-
     this.status = data.status || "active";
 
     this.startedAt = data.startedAt || new Date();
@@ -101,59 +82,51 @@ class SessionModel extends BaseModel {
   }
 }
 
-/**
- * Query Builder (VERY IMPORTANT 🔥)
- * This enables cross-agent + scoped memory access
- */
-class MemoryQueryBuilder {
-  static build({ agent, project, query, scope = "project", includeGlobal = true }) {
+export class MemoryQueryBuilder {
+  static build({ agent, project, query, scope = "project", includeGlobal = true } = {}) {
     const conditions = [];
 
-    // PRIVATE
-    conditions.push({
-      agent,
-      scope: MEMORY_SCOPE.PRIVATE
-    });
-
-    // PROJECT
-    if (scope === "project" || scope === "global") {
-      conditions.push({
-        project,
-        scope: MEMORY_SCOPE.PROJECT
-      });
+    if (agent) {
+      conditions.push({ agent, scope: MEMORY_SCOPE.PRIVATE });
     }
 
-    // GLOBAL
+    if (project && (scope === "project" || scope === "global")) {
+      conditions.push({ project, scope: MEMORY_SCOPE.PROJECT });
+    }
+
     if (includeGlobal) {
-      conditions.push({
-        scope: MEMORY_SCOPE.GLOBAL
-      });
+      conditions.push({ scope: MEMORY_SCOPE.GLOBAL });
     }
 
-    return {
-      $and: [
-        { $or: conditions },
-        {
-          content: { $regex: query, $options: "i" }
-        }
-      ]
-    };
+    const filters = [];
+
+    if (conditions.length) {
+      filters.push({ $or: conditions });
+    }
+
+    if (query?.trim()) {
+      filters.push({ $text: { $search: query.trim() } });
+    }
+
+    if (!filters.length) {
+      return {};
+    }
+
+    if (filters.length === 1) {
+      return filters[0];
+    }
+
+    return { $and: filters };
   }
 }
 
-/**
- * Normalizer
- */
-function normalizeMemory(memory) {
-  return JSON.parse(JSON.stringify(memory));
+export function normalizeMemory(memory) {
+  return {
+    ...JSON.parse(JSON.stringify(memory)),
+    importance: memory.importance ?? 3,
+    accessCount: memory.accessCount || 0,
+    lastAccessedAt: memory.lastAccessedAt || null,
+    createdAt: memory.createdAt || new Date(),
+    updatedAt: new Date()
+  };
 }
-
-module.exports = {
-  MEMORY_SCOPE,
-  BaseModel,
-  ContextModel,
-  ActionModel,
-  SessionModel,
-  MemoryQueryBuilder,
-  normalizeMemory
-};

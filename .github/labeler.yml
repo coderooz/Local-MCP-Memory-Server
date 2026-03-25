@@ -1,0 +1,22 @@
+memory:
+  - "mcp.model.js"
+  - "server.js"
+
+mcp:
+  - "mcp-server.js"
+  - "mcp-shim.js"
+
+docs:
+  - "*.md"
+  - "README.md"
+
+config:
+  - "package.json"
+  - ".env*"
+
+instructions:
+  - "instruction.md"
+  - "agent-instruction.js"
+
+infra:
+  - ".github/**"

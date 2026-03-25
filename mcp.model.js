@@ -82,6 +82,79 @@ export class SessionModel extends BaseModel {
   }
 }
 
+
+export class AgentModel extends BaseModel {
+  constructor(data = {}) {
+    super(data);
+
+    this.agent_id = data.agent_id || this.id;
+    this.name = data.name || "Unnamed Agent";
+    this.role = data.role || "worker";
+
+    this.capabilities = data.capabilities || [];
+    this.status = data.status || "idle"; // active | idle | offline
+
+    this.current_task = data.current_task || null;
+    this.last_seen = new Date();
+  }
+}
+
+export class TaskModel extends BaseModel {
+  constructor(data = {}) {
+    super(data);
+
+    this.task_id = data.task_id || this.id;
+
+    this.title = data.title || "";
+    this.description = data.description || "";
+
+    this.assigned_to = data.assigned_to || null;
+    this.created_by = data.created_by || "system";
+
+    this.status = data.status || "pending"; 
+    // pending | in_progress | blocked | completed
+
+    this.priority = data.priority || 3;
+    this.dependencies = data.dependencies || [];
+  }
+}
+
+export class MessageModel extends BaseModel {
+  constructor(data = {}) {
+    super(data);
+
+    this.message_id = data.message_id || this.id;
+
+    this.from_agent = data.from_agent || "system";
+    this.to_agent = data.to_agent || null;
+
+    this.type = data.type || "info"; 
+    // info | warning | handoff | status
+
+    this.content = data.content || "";
+    this.related_task = data.related_task || null;
+  }
+}
+
+export class ProjectMapModel extends BaseModel {
+  constructor(data = {}) {
+    super(data);
+
+    this.file_path = data.file_path || "";
+    this.type = data.type || "unknown";
+
+    this.summary = data.summary || "";
+
+    this.dependencies = data.dependencies || [];
+    this.exports = data.exports || [];
+
+    this.relationships = data.relationships || {
+      parent: null,
+      children: []
+    };
+  }
+}
+
 export class MemoryQueryBuilder {
   static build({ agent, project, query, scope = "project", includeGlobal = true } = {}) {
     const conditions = [];

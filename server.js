@@ -12,8 +12,14 @@ import {
   ContextModel,
   MemoryQueryBuilder,
   SessionModel,
-  normalizeMemory
+  normalizeMemory,
+  AgentModel,
+  TaskModel,
+  MessageModel,
+  ProjectMapModel
 } from "./mcp.model.js";
+
+import { routeHandler } from "./utils/routeHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,13 +40,14 @@ let db = null;
 let server = null;
 let startupPromise = null;
 
+// ========================
+// DB HELPER
+// ========================
 function getDb() {
-  if (!db) {
-    throw new Error("Database connection is not ready.");
-  }
-
+  if (!db) throw new Error("Database not ready");
   return db;
 }
+
 
 async function ensureIndexes(database) {
   await Promise.all([
@@ -53,31 +60,31 @@ async function ensureIndexes(database) {
     database.collection("actions").createIndex({ id: 1 }, { unique: true }),
     database.collection("actions").createIndex({ contextRefs: 1 }),
     database.collection("sessions").createIndex({ sessionId: 1 }, { unique: true }),
-    database.collection("logs").createIndex({ createdAt: -1 })
+    database.collection("logs").createIndex({ createdAt: -1 }),
+
+    database.collection("agents").createIndex({ agent_id: 1 }, { unique: true }),
+    database.collection("tasks").createIndex({ task_id: 1 }, { unique: true }),
+    database.collection("messages").createIndex({ message_id: 1 }, { unique: true }),
+    database.collection("messages").createIndex({ to_agent: 1 }),
+    database.collection("project_map").createIndex({ file_path: 1 })
   ]);
 }
 
 function rankSearchResults(results, query) {
   const now = new Date();
-  const queryWords = String(query || "")
-    .toLowerCase()
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const words = query.toLowerCase().split(" ").filter(Boolean);
 
   return results
     .map((item) => {
       let score = 0;
       const content = item.content?.toLowerCase() || "";
 
-      if (queryWords.length) {
-        const matches = queryWords.filter((word) => content.includes(word)).length;
-        score += matches * 2;
-      }
+      const matches = words.filter((w) => content.includes(w)).length;
+      score += matches * 2;
 
       score += (item.importance || 3) * 2;
 
-      const ageHours = (now - new Date(item.createdAt)) / (1000 * 60 * 60);
+      const ageHours = (now - new Date(item.createdAt)) / 3600000;
       score += Math.max(0, 5 - ageHours / 24);
 
       score += Math.log((item.accessCount || 0) + 1);
@@ -87,60 +94,40 @@ function rankSearchResults(results, query) {
     .sort((a, b) => b.score - a.score);
 }
 
-app.post("/context", async (req, res) => {
-  try {
-    const context = new ContextModel(req.body);
+// ========================
+// ROUTES
+// ========================
 
-    await getDb().collection("contexts").insertOne(normalizeMemory(context));
+app.post(
+  "/context",
+  routeHandler("contexts", async ({ req, collection }) => {
+    const context = new ContextModel(req.body);
+    await collection.insertOne(normalizeMemory(context));
 
     await logInfo("Context stored", {
       agent: context.agent,
-      project: context.project,
-      scope: context.scope
+      project: context.project
     });
 
-    res.json({ success: true, context });
-  } catch (error) {
-    await logError(error, {
-      route: "/context",
-      agent: req.body?.agent,
-      project: req.body?.project
-    });
+    return { success: true, context };
+  })
+);
 
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+app.post(
+  "/context/search",
+  routeHandler("contexts", async ({ req, collection }) => {
+    const { agent, project, query = "", limit = 10 } = req.body;
 
-app.post("/context/search", async (req, res) => {
-  try {
-    const {
-      agent,
-      project,
-      query = "",
-      scope = "project",
-      includeGlobal = true,
-      limit = 10
-    } = req.body;
+    const baseQuery = MemoryQueryBuilder.build({ agent, project, query });
 
-    const baseQuery = MemoryQueryBuilder.build({
-      agent,
-      project,
-      query,
-      scope,
-      includeGlobal
-    });
+    let results = await collection.find(baseQuery).limit(50).toArray();
 
-    let results = await getDb()
-      .collection("contexts")
-      .find(baseQuery)
-      .limit(50)
-      .toArray();
+    const ranked = rankSearchResults(results, query).slice(0, limit);
 
-    const finalResults = rankSearchResults(results, query).slice(0, limit);
-    const ids = finalResults.map((result) => result.id);
+    const ids = ranked.map((r) => r.id);
 
     if (ids.length) {
-      await getDb().collection("contexts").updateMany(
+      await collection.updateMany(
         { id: { $in: ids } },
         {
           $inc: { accessCount: 1 },
@@ -149,104 +136,72 @@ app.post("/context/search", async (req, res) => {
       );
     }
 
-    res.json(finalResults);
-  } catch (error) {
-    await logError(error, {
-      route: "/context/search",
-      agent: req.body?.agent,
-      project: req.body?.project
-    });
+    return ranked;
+  })
+);
 
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.get("/context/:id/full", async (req, res) => {
-  try {
-    const context = await getDb()
+app.get(
+  "/context/:id/full",
+  routeHandler("contexts", async ({ req, db }) => {
+    const context = await db
       .collection("contexts")
       .findOne({ id: req.params.id });
 
     if (!context) {
-      return res.status(404).json({
-        success: false,
-        error: "Context not found"
-      });
+      return { error: "Context not found" };
     }
 
-    const actions = await getDb()
+    const actions = await db
       .collection("actions")
       .find({ contextRefs: context.id })
       .toArray();
 
-    res.json({ context, actions });
-  } catch (error) {
-    await logError(error, {
-      route: "/context/:id/full",
-      contextId: req.params.id
-    });
+    return { context, actions };
+  })
+);
 
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post("/action", async (req, res) => {
-  try {
+// ========================
+// ACTIONS / SESSION
+// ========================
+app.post(
+  "/action",
+  routeHandler("actions", async ({ req, collection }) => {
     const action = new ActionModel(req.body);
+    await collection.insertOne(normalizeMemory(action));
 
-    await getDb().collection("actions").insertOne(normalizeMemory(action));
+    return { success: true, action };
+  })
+);
 
-    res.json({ success: true, action });
-  } catch (error) {
-    await logError(error, {
-      route: "/action",
-      agent: req.body?.agent,
-      project: req.body?.project
-    });
-
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post("/session", async (req, res) => {
-  try {
+app.post(
+  "/session",
+  routeHandler("sessions", async ({ req, collection }) => {
     const session = new SessionModel(req.body);
+    await collection.insertOne(normalizeMemory(session));
 
-    await getDb().collection("sessions").insertOne(normalizeMemory(session));
+    return { success: true, session };
+  })
+);
 
-    res.json({ success: true, session });
-  } catch (error) {
-    await logError(error, {
-      route: "/session",
-      agent: req.body?.agent,
-      project: req.body?.project
-    });
-
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post("/logs", async (req, res) => {
-  try {
+// ========================
+// LOGS
+// ========================
+app.post(
+  "/logs",
+  routeHandler("logs", async ({ req, collection }) => {
     const { query = {}, limit = 20 } = req.body;
 
-    const logs = await getDb()
-      .collection("logs")
+    return collection
       .find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
       .toArray();
-
-    res.json(logs);
-  } catch (error) {
-    await logError(error, { route: "/logs" });
-    res.status(500).json({ error: error.message });
-  }
-});
+  })
+);
 
 app.post("/log", async (req, res) => {
   try {
-    const { type, message, stack, context } = req.body;
+    const { type, message, context } = req.body;
 
     if (type === "error") {
       await logError(new Error(message), context);
@@ -255,20 +210,133 @@ app.post("/log", async (req, res) => {
     }
 
     res.json({ success: true });
-  
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
+// ========================
+// AGENTS
+// ========================
+app.post(
+  "/agent/register",
+  routeHandler("agents", async ({ req, collection }) => {
+    const agent = new AgentModel(req.body);
+
+    await collection.updateOne(
+      { agent_id: agent.agent_id },
+      { $set: normalizeMemory(agent) },
+      { upsert: true }
+    );
+
+    return { success: true, agent };
+  })
+);
+
+app.get(
+  "/agent/list",
+  routeHandler("agents", async ({ collection }) => {
+    return collection.find().limit(50).toArray();
+  })
+);
+
+// ========================
+// TASKS
+// ========================
+app.post(
+  "/task",
+  routeHandler("tasks", async ({ req, collection }) => {
+    const task = new TaskModel(req.body);
+    await collection.insertOne(normalizeMemory(task));
+
+    return { success: true, task };
+  })
+);
+
+app.post(
+  "/task/assign",
+  routeHandler("tasks", async ({ req, collection }) => {
+    const { task_id, agent_id } = req.body;
+
+    if (!task_id || !agent_id) {
+      return { error: "Missing task_id or agent_id" };
+    }
+
+    await collection.updateOne(
+      { task_id },
+      { $set: { assigned_to: agent_id, status: "in_progress" } }
+    );
+
+    return { success: true };
+  })
+);
+
+app.get(
+  "/task/list",
+  routeHandler("tasks", async ({ collection }) => {
+    return collection.find().limit(50).toArray();
+  })
+);
+
+
+// messages
+
+app.post("/message", async (req, res) => {
+  const message = new MessageModel(req.body);
+
+  await getDb().collection("messages").insertOne(normalizeMemory(message));
+
+  res.json({ success: true, message });
+});
+
+app.get("/message/:agent_id", async (req, res) => {
+  const messages = await getDb()
+    .collection("messages")
+    .find({
+      $or: [
+        { to_agent: req.params.agent_id },
+        { to_agent: null }
+      ]
+    })
+    .toArray();
+
+  res.json(messages);
+});
+
+// ========================
+// PROJECT MAP
+// ========================
+app.post(
+  "/project-map",
+  routeHandler("project_map", async ({ req, collection }) => {
+    const entry = new ProjectMapModel(req.body);
+
+    await collection.insertOne(normalizeMemory(entry));
+
+    return { success: true, entry };
+  })
+);
+
+app.get(
+  "/project-map",
+  routeHandler("project_map", async ({ collection }) => {
+    return collection.find().limit(100).toArray();
+  })
+);
+
+
+// ========================
+// ROOT
+// ========================
 app.get("/", (_req, res) => {
   res.send("MCP Memory Server Running");
 });
 
+// ========================
+// SERVER START
+// ========================
 export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) {
-  if (server) {
-    return { app, db: getDb(), server, port };
-  }
+  if (server) return { app, db: getDb(), server, port };
 
   if (!startupPromise) {
     startupPromise = (async () => {
@@ -279,6 +347,11 @@ export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) 
       initLogger(db);
 
       await ensureIndexes(db);
+
+      // 🔥 attach globals for routeHandler
+      app.locals.db = db;
+      app.locals.logError = logError;
+
       await logInfo("MongoDB connected", { dbName: DB_NAME });
 
       server = await new Promise((resolve, reject) => {
@@ -287,7 +360,7 @@ export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) 
       });
 
       if (!silent) {
-        process.stderr.write(`MCP Memory Server running on port ${port}\n`);
+        console.log(`MCP Server running on port ${port}`);
       }
 
       return { app, db, server, port };
@@ -296,13 +369,8 @@ export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) 
       db = null;
       server = null;
 
-      if (client) {
-        try {
-          await client.close();
-        } catch {}
-      }
+      if (client) await client.close();
 
-      client = null;
       throw error;
     });
   }
@@ -310,23 +378,15 @@ export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) 
   return startupPromise;
 }
 
+// ========================
+// STOP SERVER
+// ========================
 export async function stopServer() {
   if (server?.listening) {
-    await new Promise((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
+    await new Promise((resolve) => server.close(resolve));
   }
 
-  if (client) {
-    await client.close();
-  }
+  if (client) await client.close();
 
   client = null;
   db = null;
@@ -334,9 +394,12 @@ export async function stopServer() {
   startupPromise = null;
 }
 
+// ========================
+// AUTO START
+// ========================
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   startServer().catch((error) => {
-    console.error("Failed to start MCP Memory Server:", error);
+    console.error("Failed to start MCP Server:", error);
     process.exit(1);
   });
 }

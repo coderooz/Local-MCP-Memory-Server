@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,9 +63,24 @@ const child = spawn(
   [path.join(__dirname, "mcp-server.js")],
   {
     env: process.env,
-    stdio: ["inherit", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"]
   }
 );
+
+process.stdin.pipe(child.stdin);
+child.stdout.pipe(process.stdout);
+child.stderr.pipe(process.stderr);
+
+process.stdin.on("error", () => {});
+child.stdin.on("error", () => {});
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    if (!child.killed) {
+      child.kill(signal);
+    }
+  });
+}
 
 child.on("exit", (code, signal) => {
   if (signal) {

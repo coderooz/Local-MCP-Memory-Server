@@ -22,9 +22,11 @@ const rl = readline.createInterface({
   terminal: false
 });
 
+const fallbackProject = path.basename(process.cwd());
+
 const CONFIG = {
   agent: process.env.MCP_AGENT || "unknown",
-  project: process.env.MCP_PROJECT || "default-project",
+  project: process.env.MCP_PROJECT || fallbackProject || "default-project",
   scope: process.env.MCP_SCOPE || "project",
   serverUrl:
     process.env.MCP_SERVER_URL ||
@@ -227,6 +229,72 @@ function getTools() {
           }
         }
       }
+    },
+    {
+      name: "list_agents",
+      description: "List all registered agents",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "create_task",
+      description: "Create a task",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" }
+        },
+        required: ["title"]
+      }
+    },
+    {
+      name: "send_message",
+      description: "Send message between agents",
+      inputSchema: {
+        type: "object",
+        properties: {
+          to_agent: { type: "string" },
+          content: { type: "string" }
+        },
+        required: ["content"]
+      }
+    },
+    {
+      name: "register_agent",
+      description: "Register a new agent in the system",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          role: { type: "string" },
+          capabilities: {
+            type: "array",
+            items: { type: "string" }
+          }
+        },
+        required: ["name"]
+      }
+    },
+    {
+      name: "fetch_tasks",
+      description: "Fetch all tasks or tasks assigned to this agent",
+      inputSchema: {
+        type: "object",
+        properties: {
+          assigned_only: {
+            type: "boolean",
+            description: "If true, fetch only tasks assigned to current agent"
+          }
+        }
+      }
+    },
+    {
+      name: "request_messages",
+      description: "Fetch messages for the current agent",
+      inputSchema: {
+        type: "object",
+        properties: {}
+      }
     }
   ];
 }
@@ -268,6 +336,100 @@ rl.on("line", async (line) => {
 
     if (request.method === "tools/call") {
       const { name, arguments: args = {} } = request.params || {};
+
+      if (name === "list_agents") {
+        const data = await callMemoryApi("/agent/list");
+
+        return respond(request.id, {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        });
+      }
+
+      if (name === "register_agent") {
+        const data = await callMemoryApi("/agent/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...args,
+            agent: CONFIG.agent,
+            project: CONFIG.project
+          })
+        });
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: `Agent registered: ${data.agent.agent_id}`
+            }
+          ]
+        });
+      }
+
+      if (name === "create_task") {
+        const data = await callMemoryApi("/task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...args,
+            agent: CONFIG.agent,
+            project: CONFIG.project
+          })
+        });
+
+        return respond(request.id, {
+          content: [{ type: "text", text: `Task created: ${data.task.task_id}` }]
+        });
+      }
+
+      if (name === "fetch_tasks") {
+        const data = await callMemoryApi("/task/list");
+
+        let tasks = data;
+
+        if (args.assigned_only) {
+          tasks = tasks.filter(
+            (t) => t.assigned_to === CONFIG.agent
+          );
+        }
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(tasks, null, 2)
+            }
+          ]
+        });
+      }
+
+      if (name === "send_message") {
+        const data = await callMemoryApi("/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from_agent: CONFIG.agent,
+            ...args
+          })
+        });
+
+        return respond(request.id, {
+          content: [{ type: "text", text: "Message sent" }]
+        });
+      }
+
+      if (name === "request_messages") {
+        const data = await callMemoryApi(`/message/${CONFIG.agent}`);
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2)
+            }
+          ]
+        });
+      }
 
       if (name === "store_context") {
         const data = await callMemoryApi("/context", {

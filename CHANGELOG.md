@@ -6,6 +6,238 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.0.0] — Multi-Agent System & MCP Evolution
+
+Major architectural upgrade introducing a distributed multi-agent system with tasks, messaging, agent coordination, and project intelligence.
+
+This release transforms the MCP Memory Server from a memory-centric tool into a coordinated system platform.
+
+
+### 🔄 Changed
+
+#### Agent Instruction System Overhaul
+
+* Completely redesigned global agent instruction (`agent-instruction.js`) to support **multi-agent distributed architecture**
+* Introduced strict **execution contract** with:
+
+  * system-aware decision making
+  * mandatory workflow (memory → tasks → messages → execution)
+* Added explicit definitions for:
+
+  * TASK system
+  * MESSAGE system
+  * AGENT coordination
+  * PROJECT MAP usage
+* Replaced legacy “single-agent MCP usage model” with **coordinated multi-agent system model**
+
+#### Instruction Documentation Rewrite
+
+* Fully rewritten `instruction.md` to align with:
+
+  * new multi-agent architecture
+  * system-first execution model
+* Removed legacy MCP usage explanations and replaced with:
+
+  * structured system workflow
+  * coordination rules
+  * failure handling model
+* Simplified and standardized guidance across all instruction sources
+
+#### MCP Server Configuration
+
+* Improved project detection:
+
+  * fallback to `process.cwd()` directory name when `MCP_PROJECT` is not set
+* Enhanced robustness of runtime configuration defaults
+
+#### MCP Shim Process Handling
+
+* Updated stdio handling:
+
+  * switched from `inherit` to fully piped streams
+* Added:
+
+  * stdin/stdout/stderr piping
+  * signal forwarding (`SIGINT`, `SIGTERM`)
+  * error-safe stream handling
+* Improved process lifecycle management and stability
+
+#### Search & Ranking Algorithm
+
+* Simplified keyword matching logic
+* Optimized scoring calculation:
+
+  * reduced overhead in query parsing
+  * improved performance for large datasets
+* Minor refactor for readability and consistency
+
+#### Server Architecture Refactor
+
+* Introduced `routeHandler` abstraction for:
+
+  * consistent error handling
+  * reduced boilerplate across routes
+* Simplified database access patterns:
+
+  * centralized `getDb()` validation
+* Refactored multiple endpoints to use shared handler logic
+
+#### Context Search System
+
+* Simplified query builder usage:
+
+  * removed redundant scope/includeGlobal handling in route
+* Improved ranking pipeline integration
+* Optimized access tracking updates
+
+#### Logging System Adjustments
+
+* Simplified `/log` endpoint:
+
+  * removed unused `stack` field
+* Standardized error handling variable usage (`err` instead of `error`)
+
+#### Server Lifecycle Improvements
+
+* Simplified startup and shutdown logic:
+
+  * reduced redundant checks
+  * improved cleanup handling
+* Updated startup logging:
+
+  * moved from `stderr.write` to `console.log`
+* Improved failure recovery during initialization
+
+---
+
+### 🚀 Added
+
+#### Multi-Agent System (Core Feature)
+
+* Introduced full **agent coordination layer** across system 
+* New MCP tools:
+
+  * `list_agents`
+  * `register_agent`
+  * `create_task`
+  * `fetch_tasks`
+  * `send_message`
+  * `request_messages`
+
+#### New Data Models
+
+* Added:
+
+  * `AgentModel`
+  * `TaskModel`
+  * `MessageModel`
+  * `ProjectMapModel`
+* Enabled structured representation of:
+
+  * agents
+  * work units (tasks)
+  * inter-agent communication
+  * codebase structure (project map)
+
+#### New API Endpoints
+
+**Agents**
+
+* `POST /agent/register`
+* `GET /agent/list`
+
+**Tasks**
+
+* `POST /task`
+* `POST /task/assign`
+* `GET /task/list`
+
+**Messages**
+
+* `POST /message`
+* `GET /message/:agent_id`
+
+**Project Map**
+
+* `POST /project-map`
+* `GET /project-map`
+
+#### Database Enhancements
+
+* Added new collections and indexes:
+
+  * `agents`
+  * `tasks`
+  * `messages`
+  * `project_map`
+* Optimized query performance with targeted indexing
+
+#### Project Map System
+
+* Introduced persistent **codebase intelligence layer**
+* Enables:
+
+  * structural awareness across agents
+  * dependency tracking
+  * architecture sharing
+
+---
+
+### 🛠 Fixed
+
+#### MCP Shim Stability
+
+* Fixed improper stdio configuration that could break MCP communication
+* Ensured proper stream forwarding between parent and child processes
+
+#### Server Initialization Edge Cases
+
+* Improved error handling during DB connection and startup
+* Prevented partial initialization states
+
+#### Minor Consistency Fixes
+
+* Standardized error variable naming
+* Removed unused imports (`pathToFileURL`)
+* Cleaned up redundant logic across server routes
+
+---
+
+### 🧹 Removed
+
+* Removed legacy instruction model assumptions (single-agent focused MCP usage)
+* Removed redundant search parameters (`scope`, `includeGlobal`) from route-level handling
+* Removed unused fields in logging (`stack`)
+
+---
+
+### 🧠 Internal Improvements
+
+* Transitioned system architecture from:
+
+  ```
+  memory-centric MCP server
+  ```
+
+  to:
+
+  ```
+  coordinated multi-agent system with memory, tasks, messaging, and project intelligence
+  ```
+* Enforced **system-first execution model**:
+
+  * tasks and messages now precede action
+* Strengthened separation between:
+
+  * coordination layer (agents/tasks/messages)
+  * memory layer (contexts/logs)
+* Improved scalability for:
+
+  * multi-agent collaboration
+  * large project environments
+
+---
+
 ## [1.1.0] - Major Refactor & MCP Stabilization
 
 ### 🚀 Added

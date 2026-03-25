@@ -1,131 +1,188 @@
 # Local MCP Memory Server
 
-A **persistent, multi-agent memory system** built on the **Model Context Protocol (MCP)**, designed to give AI agents long-term memory, shared context, and structured learning across projects.
+A **distributed multi-agent memory system** built on the **Model Context Protocol (MCP)**.
+
+This project transforms MCP from a simple memory layer into a **coordinated system platform** with:
+
+- 🧠 Persistent memory
+- 🤖 Agent coordination
+- 📋 Task management
+- 💬 Inter-agent messaging
+- 🗺 Project structure intelligence
+
+---
 
 ![GitHub stars](https://img.shields.io/github/stars/coderooz/Local-MCP-Memory-Server)
 ![Issues](https://img.shields.io/github/issues/coderooz/Local-MCP-Memory-Server)
 ![License](https://img.shields.io/github/license/coderooz/Local-MCP-Memory-Server)
+
 ---
 
 ## 🚀 Overview
 
-This project provides a **fully functional MCP server** backed by **MongoDB**, enabling:
+This system enables AI agents to:
 
-* 🧠 Persistent memory across sessions
-* 🤖 Multi-agent collaboration (Codex, Roo, etc.)
-* 📁 Project-aware context separation
-* 🔍 Intelligent memory search and ranking
-* 📝 Action tracking and logging
-* ⚙️ Automatic project detection via shim
+- Remember across sessions
+- Coordinate work via tasks
+- Communicate through messages
+- Understand project structure
+- Share persistent knowledge
 
-This is not just a storage layer — it is a **memory infrastructure for evolving AI systems**.
+👉 This is no longer just a memory server —  
+it is a **multi-agent coordination infrastructure**.
 
 ---
 
 ## 🧠 Architecture
 
 ```
+
 Agent (Codex / Roo / Others)
-        ↓
-   MCP Server (stdio, JSON-RPC)
-        ↓
-   HTTP API (Express)
-        ↓
-   MongoDB (Persistence Layer)
-```
+↓
+MCP Server (stdio, JSON-RPC)
+↓
+HTTP API (Express)
+↓
+MongoDB (Persistence Layer)
 
-### Key Components
+````
 
-* **`mcp-server.js`**
+---
 
-  * MCP stdio server (JSON-RPC)
-  * Handles tool calls
-  * Ensures protocol-safe communication
+## 🧩 Core System Components
 
-* **`server.js`**
+### 🧠 Memory System
+- Persistent knowledge storage
+- Searchable, ranked context
+- Cross-agent reuse
 
-  * Express-based HTTP API
-  * MongoDB integration
-  * Handles persistence, search, and logging
+---
 
-* **`mcp.model.js`**
+### 📋 Task System
+- Work coordination between agents
+- Task lifecycle:
+  - pending → in_progress → completed / blocked
+- Prevents duplication of work
 
-  * Defines memory models:
+---
 
-    * Context
-    * Action
-    * Session
-  * Includes query builder + normalization
+### 💬 Messaging System
+- Agent-to-agent communication
+- Used for:
+  - coordination
+  - handoffs
+  - updates
+  - blockers
 
-* **`logger.js`**
+---
 
-  * Central logging system
-  * Stores logs + converts critical errors into memory
+### 🤖 Agent System
+- Register and track agents
+- Maintain system awareness
+- Enables distributed execution
 
-* **`startMemoryServer.js`**
+---
 
-  * Ensures API server starts once (in-process)
+### 🗺 Project Map System
+- Persistent representation of codebase structure
+- Tracks:
+  - dependencies
+  - relationships
+  - architecture patterns
+- Enables system-level reasoning
 
-* **`mcp-shim.js`**
+---
 
-  * Automatically derives:
+## 📦 Key Files
 
-    * `MCP_PROJECT` from folder name
-    * `MCP_SCOPE = project`
-  * Enables **global config, zero per-project setup**
+| File | Description |
+|------|------------|
+| `mcp-server.js` | MCP stdio server (JSON-RPC tools layer) |
+| `server.js` | Express API + system orchestration |
+| `mcp.model.js` | Models: Memory, Task, Agent, Message, ProjectMap |
+| `mcp-shim.js` | Auto project detection + environment injection |
+| `utils/routeHandler.js` | Unified route abstraction |
+| `agent-instruction.js` | System-level agent execution contract |
 
 ---
 
 ## 🧰 MCP Tools
 
-The server exposes the following tools:
+### 🧠 Memory Tools
+| Tool | Description |
+|------|------------|
+| `store_context` | Store reusable knowledge |
+| `search_context` | Retrieve memory |
+| `get_full_context` | Detailed memory view |
+| `get_logs` | Debug logs |
 
-| Tool                     | Description                                    |
-| ------------------------ | ---------------------------------------------- |
-| `store_context`          | Store reusable memory (decisions, rules, bugs) |
-| `search_context`         | Retrieve relevant past memory                  |
-| `log_action`             | Record meaningful changes or work              |
-| `get_full_context`       | Retrieve context with related actions          |
-| `start_session`          | Track multi-step work sessions                 |
-| `get_agent_instructions` | Fetch canonical agent behavior rules           |
-| `get_logs`               | Retrieve system logs for debugging             |
+---
+
+### 📋 Task Tools
+| Tool | Description |
+|------|------------|
+| `create_task` | Create task |
+| `fetch_tasks` | Get tasks |
+| *(API)* `/task/assign` | Assign task |
+
+---
+
+### 💬 Messaging Tools
+| Tool | Description |
+|------|------------|
+| `send_message` | Send message |
+| `request_messages` | Fetch messages |
+
+---
+
+### 🤖 Agent Tools
+| Tool | Description |
+|------|------------|
+| `register_agent` | Register agent |
+| `list_agents` | List agents |
+
+---
+
+### ⚙️ System Tools
+| Tool | Description |
+|------|------------|
+| `get_agent_instructions` | Fetch execution rules |
 
 ---
 
 ## ⚙️ Setup
 
-### 1. Install Dependencies
+### 1. Install
 
 ```bash
 npm install
-```
+````
 
 ---
 
-### 2. Configure Environment
+### 2. Environment
 
-Create a `.env` file:
+Create `.env`:
 
 ```env
 MONGO_URI=mongodb://localhost:27017/mcp_memory
 PORT=4000
 
-# Optional
 MCP_AGENT=codex
 MCP_SERVER_URL=http://localhost:4000
 ```
 
 ---
 
-### 3. Start the Server
+### 3. Run
 
-#### Start API (Express + MongoDB)
+#### API Server
 
 ```bash
 npm run start:api
 ```
 
-#### Start MCP Server (for agents)
+#### MCP Server
 
 ```bash
 npm start
@@ -135,218 +192,125 @@ npm start
 
 ## 🤖 Agent Integration
 
-### ✅ Recommended (Global Setup)
-
-Configure your agent (Codex / Roo) to use:
+Use:
 
 ```
 mcp-shim.js
 ```
 
-This enables:
+### Benefits:
 
 * Automatic project detection
-* No per-project config required
-* Clean multi-project memory separation
+* Zero per-project config
+* Clean multi-project isolation
 
 ---
 
-### Example (Conceptual)
+## 🧠 Execution Model (v2)
 
-```json
-{
-  "memory": {
-    "command": "node",
-    "args": ["path/to/mcp-shim.js"],
-    "env": {
-      "MCP_AGENT": "codex",
-      "MCP_SERVER_URL": "http://localhost:4000"
-    }
-  }
-}
+Agents must follow:
+
+```
+Memory → Tasks → Messages → Decision → Action → Persistence
 ```
 
----
+System state takes priority over:
 
-## 🧠 Memory Model
-
-### Context
-
-Stores reusable knowledge:
-
-* Architecture decisions
-* Rules and constraints
-* Bug fixes
-* Patterns
-
----
-
-### Action
-
-Tracks changes:
-
-* File updates
-* Fixes
-* Feature additions
-
----
-
-### Session
-
-Tracks work lifecycle:
-
-* Multi-step tasks
-* Ongoing work
-* Status tracking
+```
+user request > memory > system state
+```
 
 ---
 
 ## 🔍 Search System
 
-Memory search uses:
+Ranking based on:
 
-* MongoDB text index
-* Ranking based on:
-
-  * keyword match
-  * importance
-  * recency
-  * access frequency
+* relevance
+* importance
+* recency
+* access frequency
 
 ---
 
-## 🧾 Logging System
+## 🧾 Logging
 
-Logs are:
-
-* Stored in MongoDB (`logs` collection)
-* Accessible via `get_logs`
-* Automatically created for:
-
-  * errors
-  * important events
-
-Critical errors are also converted into **memory entries**.
+* Stored in MongoDB (`logs`)
+* Accessible via MCP
+* Errors auto-promoted to memory
 
 ---
 
-## ⚠️ Important Design Rules
+## ⚠️ Critical Rules
 
-### MCP Protocol Safety
+### MCP Protocol
 
-* ❌ Do NOT write logs to stdout
+* ❌ No stdout logs
 * ✅ stdout = JSON-RPC only
-* ✅ logs → stderr or database
+* ✅ logs → stderr / DB
 
 ---
 
-### Memory Quality
+### System Rules
 
-Only store:
-
-* reusable knowledge
-* important decisions
-* non-obvious fixes
-
-Avoid:
-
-* noise
-* temporary thoughts
-* large raw logs
-
----
-
-### Environment Consistency
-
-Memory identity depends on:
-
-* `MCP_AGENT`
-* `MCP_PROJECT`
-* `MCP_SCOPE`
-
-Incorrect configuration leads to:
-
-* mixed agent data
-* incorrect project attribution
-
----
-
-## 🧪 Validation
-
-Run:
-
-```bash
-npm test
-```
-
-This checks all core files for syntax validity.
-
----
-
-## 📁 Project-Aware Behavior (Key Feature)
-
-With `mcp-shim.js`:
-
-* Project name is derived automatically
-* Example:
-
-```
-C:\Projects\mycelium-growth → MCP_PROJECT=mycelium-growth
-```
-
-No need for per-project config.
+* Do NOT skip task checks
+* Do NOT duplicate work
+* Always check messages before acting
+* Memory ≠ source of truth (tasks are)
 
 ---
 
 ## 🧠 Use Cases
 
-* AI agents with long-term memory
-* Multi-agent collaboration systems
-* Self-improving code generation systems
-* Debugging systems with memory of past failures
-* Research simulations (like mycelium growth)
+* Multi-agent AI systems
+* Autonomous coding agents
+* Persistent debugging systems
+* Research simulations
+* Collaborative AI workflows
 
 ---
 
-## 🚀 Future Improvements
+## 📈 Evolution
 
-* Vector embeddings for semantic search
-* Memory importance auto-scoring
-* Conflict resolution system
-* Self-healing server (auto-restart + health checks)
-* Agent feedback loops
+### v1
+
+```
+Memory server
+```
+
+### v2
+
+```
+Multi-agent system platform
+```
 
 ---
 
-## 🧠 Vision
+## 🚀 Future Roadmap
 
-We are building a system where AI agents:
-
-- remember across sessions
-- learn from past actions
-- collaborate through shared memory
-
-This project is a step toward autonomous, evolving AI systems.
+* Semantic (vector) search
+* Conflict detection
+* Auto task assignment
+* Self-healing system
+* Agent learning loops
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions!
+We welcome contributions in:
 
-If you're interested in:
-- AI systems
-- MCP / agent tooling
-- distributed memory systems
-
-👉 Check issues or open a discussion
+* MCP tooling
+* AI agent systems
+* distributed coordination
+* memory systems
 
 ---
 
 ## 👨‍💻 Author
 
 **Ranit Saha (Coderooz)**
-🌐 https://www.coderooz.in
+🌐 [https://www.coderooz.in](https://www.coderooz.in)
 
 ---
 
@@ -358,16 +322,16 @@ MIT License
 
 ## 🧠 Final Note
 
-This system transforms AI from:
+This system evolves AI from:
 
 ```
-stateless responder
+stateless tool
 ```
 
 into:
 
 ```
-persistent, learning collaborator
+coordinated, memory-driven system
 ```
 
-Use it as infrastructure — not just a tool.
+Use it as **infrastructure — not just a library**.

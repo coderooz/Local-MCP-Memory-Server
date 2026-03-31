@@ -1,12 +1,13 @@
 {
   "name": "local-mcp-memory",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Persistent multi-agent memory server using MCP protocol",
   "main": "mcp-server.js",
   "scripts": {
     "start": "node mcp-server.js",
     "start:api": "node server.js",
-    "check": "node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check mcp.model.js && node --check logger.js && node --check agent-instruction.js",
+    "migrate:project-id": "node migrate-project-id.js",
+    "check": "node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check mcp.model.js && node --check logger.js && node --check agent-instruction.js && node --check docs/app.js",
     "test": "npm run check"
   },
   "type": "module",

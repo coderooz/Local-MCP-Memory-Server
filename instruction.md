@@ -39,6 +39,9 @@ MCP SERVER REALITY
 - store_context accepts ONLY: { content }
 - search_context returns ranked summaries
 - get_full_context returns structured JSON
+- fetch_tasks returns project-scoped task lists with assignment/status filters
+- send_message and request_messages are project-scoped
+- project structure is stored via create_project_map / fetch_project_map
 - get_logs = backend debugging ONLY
 
 Do NOT assume unsupported fields or hidden features.
@@ -108,14 +111,19 @@ Use when:
 
 Behavior:
 - Prefer existing project_map over re-analysis
+- Use fetch_project_map before remapping a project area
 - Update ONLY when:
   - structure changes
   - new modules introduced
+- Persist updates with create_project_map
+- file_path should be relative to project root
+- Use "." for project-level summaries
 - Do NOT store trivial file listings
 - Store:
   - relationships
   - dependencies
   - architecture patterns
+  - key details that unblock future agents
 
 Goal:
 → persistent system-level awareness across agents
@@ -173,6 +181,15 @@ Use create_task when:
 - multi-step work
 - system impact
 - coordination required
+
+Use assign_task when:
+- claiming ownership
+- routing work to another agent
+
+Use update_task when:
+- status changes
+- blocked reason discovered
+- handoff result is ready
 
 Before acting:
 → ALWAYS fetch_tasks
@@ -245,8 +262,10 @@ start_session → track multi-step work
 get_logs → backend debugging  
 
 create_task / fetch_tasks → task system  
+assign_task / update_task → task coordination  
 send_message / request_messages → communication  
 register_agent / list_agents → agent system  
+create_project_map / fetch_project_map → project structure intelligence  
 
 Rules:
 - Do NOT use blindly

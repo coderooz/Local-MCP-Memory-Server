@@ -1,0 +1,9 @@
+{
+  "name": "Local MCP Memory Server Docs",
+  "short_name": "LMMS Docs",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4efe6",
+  "theme_color": "#0d1b2a",
+  "description": "Multilingual documentation for Local MCP Memory Server."
+}

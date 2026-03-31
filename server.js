@@ -48,6 +48,27 @@ function getDb() {
   return db;
 }
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function parseBoolean(value, fallback = false) {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return String(value).toLowerCase() === "true";
+}
 
 async function ensureIndexes(database) {
   await Promise.all([
@@ -64,9 +85,20 @@ async function ensureIndexes(database) {
 
     database.collection("agents").createIndex({ agent_id: 1 }, { unique: true }),
     database.collection("tasks").createIndex({ task_id: 1 }, { unique: true }),
+    database.collection("tasks").createIndex({ project: 1, status: 1, priority: -1 }),
+    database.collection("tasks").createIndex({ project: 1, assigned_to: 1, updatedAt: -1 }),
     database.collection("messages").createIndex({ message_id: 1 }, { unique: true }),
-    database.collection("messages").createIndex({ to_agent: 1 }),
-    database.collection("project_map").createIndex({ file_path: 1 })
+    database.collection("messages").createIndex({ project: 1, to_agent: 1, createdAt: -1 }),
+    database.collection("project_map").createIndex({ project: 1, file_path: 1 }),
+    database.collection("project_map").createIndex({ project: 1, type: 1, updatedAt: -1 }),
+    database.collection("project_map").createIndex({
+      file_path: "text",
+      summary: "text",
+      key_details: "text",
+      dependencies: "text",
+      exports: "text",
+      tags: "text"
+    })
   ]);
 }
 
@@ -262,46 +294,152 @@ app.post(
       return { error: "Missing task_id or agent_id" };
     }
 
-    await collection.updateOne(
+    const updateResult = await collection.updateOne(
       { task_id },
-      { $set: { assigned_to: agent_id, status: "in_progress" } }
+      {
+        $set: {
+          assigned_to: agent_id,
+          status: "in_progress",
+          updatedAt: new Date()
+        }
+      }
     );
 
-    return { success: true };
+    if (!updateResult.matchedCount) {
+      return { error: "Task not found" };
+    }
+
+    const task = await collection.findOne({ task_id });
+
+    return { success: true, task };
+  })
+);
+
+app.post(
+  "/task/update",
+  routeHandler("tasks", async ({ req, collection }) => {
+    const { task_id, updates = {} } = req.body;
+
+    if (!task_id) {
+      return { error: "Missing task_id" };
+    }
+
+    const allowedUpdates = [
+      "title",
+      "description",
+      "assigned_to",
+      "status",
+      "priority",
+      "dependencies",
+      "result",
+      "blocker"
+    ];
+
+    const nextValues = {
+      updatedAt: new Date()
+    };
+
+    for (const field of allowedUpdates) {
+      if (updates[field] !== undefined) {
+        nextValues[field] = updates[field];
+      }
+    }
+
+    if (Object.keys(nextValues).length === 1) {
+      return { error: "No valid updates provided" };
+    }
+
+    const updateResult = await collection.updateOne(
+      { task_id },
+      { $set: nextValues }
+    );
+
+    if (!updateResult.matchedCount) {
+      return { error: "Task not found" };
+    }
+
+    const task = await collection.findOne({ task_id });
+
+    return { success: true, task };
   })
 );
 
 app.get(
   "/task/list",
-  routeHandler("tasks", async ({ collection }) => {
-    return collection.find().limit(50).toArray();
+  routeHandler("tasks", async ({ req, collection }) => {
+    const {
+      project,
+      assigned_to,
+      created_by,
+      status,
+      include_completed,
+      limit
+    } = req.query;
+
+    const filter = {};
+
+    if (project) {
+      filter.project = project;
+    }
+
+    if (assigned_to) {
+      filter.assigned_to = assigned_to;
+    }
+
+    if (created_by) {
+      filter.created_by = created_by;
+    }
+
+    if (status) {
+      filter.status = status;
+    } else if (!parseBoolean(include_completed, true)) {
+      filter.status = { $ne: "completed" };
+    }
+
+    return collection
+      .find(filter)
+      .sort({ priority: -1, updatedAt: -1, createdAt: -1 })
+      .limit(parsePositiveInt(limit, 50))
+      .toArray();
   })
 );
 
 
 // messages
 
-app.post("/message", async (req, res) => {
-  const message = new MessageModel(req.body);
+app.post(
+  "/message",
+  routeHandler("messages", async ({ req, collection }) => {
+    const message = new MessageModel(req.body);
 
-  await getDb().collection("messages").insertOne(normalizeMemory(message));
+    await collection.insertOne(normalizeMemory(message));
 
-  res.json({ success: true, message });
-});
+    return { success: true, message };
+  })
+);
 
-app.get("/message/:agent_id", async (req, res) => {
-  const messages = await getDb()
-    .collection("messages")
-    .find({
+app.get(
+  "/message/:agent_id",
+  routeHandler("messages", async ({ req, collection }) => {
+    const { project, limit } = req.query;
+    const filter = {
       $or: [
         { to_agent: req.params.agent_id },
         { to_agent: null }
       ]
-    })
-    .toArray();
+    };
 
-  res.json(messages);
-});
+    if (project) {
+      filter.project = project;
+    }
+
+    return collection
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(parsePositiveInt(limit, 50))
+      .toArray();
+  })
+);
 
 // ========================
 // PROJECT MAP
@@ -311,16 +449,60 @@ app.post(
   routeHandler("project_map", async ({ req, collection }) => {
     const entry = new ProjectMapModel(req.body);
 
-    await collection.insertOne(normalizeMemory(entry));
+    if (!entry.file_path) {
+      return { error: "Missing file_path" };
+    }
 
-    return { success: true, entry };
+    const filter = {
+      project: entry.project,
+      file_path: entry.file_path
+    };
+
+    await collection.updateOne(
+      filter,
+      { $set: normalizeMemory(entry) },
+      { upsert: true }
+    );
+
+    const storedEntry = await collection.findOne(filter);
+
+    return { success: true, entry: storedEntry };
   })
 );
 
 app.get(
   "/project-map",
-  routeHandler("project_map", async ({ collection }) => {
-    return collection.find().limit(100).toArray();
+  routeHandler("project_map", async ({ req, collection }) => {
+    const { project, file_path, type, query = "", limit } = req.query;
+    const filter = {};
+
+    if (project) {
+      filter.project = project;
+    }
+
+    if (file_path) {
+      filter.file_path = file_path;
+    }
+
+    if (type) {
+      filter.type = type;
+    }
+
+    if (query.trim()) {
+      filter.$text = { $search: query.trim() };
+
+      return collection
+        .find(filter, { projection: { score: { $meta: "textScore" } } })
+        .sort({ score: { $meta: "textScore" }, updatedAt: -1 })
+        .limit(parsePositiveInt(limit, 100))
+        .toArray();
+    }
+
+    return collection
+      .find(filter)
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(parsePositiveInt(limit, 100))
+      .toArray();
   })
 );
 

@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 
 import { startMemoryServer } from "./startMemoryServer.js";
 import { GLOBAL_AGENT_INSTRUCTION } from "./agent-instruction.js";
+import { resolveProjectIdentity } from "./utils/projectIdentity.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,12 +23,20 @@ const rl = readline.createInterface({
   terminal: false
 });
 
-const fallbackProject = path.basename(process.cwd());
+const { projectRoot, derivedProject } = resolveProjectIdentity(
+  process.cwd(),
+  process.env
+);
+
+if (!process.env.MCP_PROJECT_ROOT) {
+  process.env.MCP_PROJECT_ROOT = projectRoot;
+}
 
 const CONFIG = {
   agent: process.env.MCP_AGENT || "unknown",
-  project: process.env.MCP_PROJECT || fallbackProject || "default-project",
+  project: process.env.MCP_PROJECT || derivedProject || "default-project",
   scope: process.env.MCP_SCOPE || "project",
+  projectRoot,
   serverUrl:
     process.env.MCP_SERVER_URL ||
     `http://localhost:${process.env.PORT || 4000}`
@@ -95,6 +104,21 @@ async function callMemoryApi(endpoint, options = {}) {
   }
 
   return payload;
+}
+
+function buildEndpoint(pathname, params = {}) {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+
+    searchParams.set(key, String(value));
+  }
+
+  const query = searchParams.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function respond(id, result) {
@@ -237,14 +261,83 @@ function getTools() {
     },
     {
       name: "create_task",
-      description: "Create a task",
+      description: "Create a task in the current project so agents can coordinate ownership and progress.",
       inputSchema: {
         type: "object",
         properties: {
           title: { type: "string" },
-          description: { type: "string" }
+          description: { type: "string" },
+          assigned_to: {
+            type: "string",
+            description: "Optional agent ID to assign immediately"
+          },
+          priority: {
+            type: "number",
+            description: "Task priority from 1-5"
+          },
+          dependencies: {
+            type: "array",
+            items: { type: "string" },
+            description: "Task IDs that must be completed first"
+          },
+          status: {
+            type: "string",
+            description: "Initial task status"
+          }
         },
         required: ["title"]
+      }
+    },
+    {
+      name: "assign_task",
+      description: "Assign or claim a task so agents do not compete for the same work.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          task_id: {
+            type: "string",
+            description: "Task ID to claim or assign"
+          },
+          agent_id: {
+            type: "string",
+            description: "Optional target agent ID. Defaults to the current agent."
+          }
+        },
+        required: ["task_id"]
+      }
+    },
+    {
+      name: "update_task",
+      description: "Update task status, ownership, blockers, or completion details.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          task_id: {
+            type: "string",
+            description: "Task ID to update"
+          },
+          title: { type: "string" },
+          description: { type: "string" },
+          assigned_to: { type: "string" },
+          status: {
+            type: "string",
+            description: "pending, in_progress, blocked, or completed"
+          },
+          priority: { type: "number" },
+          dependencies: {
+            type: "array",
+            items: { type: "string" }
+          },
+          result: {
+            type: "string",
+            description: "Completion summary or handoff result"
+          },
+          blocker: {
+            type: "string",
+            description: "Reason the task is blocked"
+          }
+        },
+        required: ["task_id"]
       }
     },
     {
@@ -254,7 +347,15 @@ function getTools() {
         type: "object",
         properties: {
           to_agent: { type: "string" },
-          content: { type: "string" }
+          content: { type: "string" },
+          type: {
+            type: "string",
+            description: "info, warning, handoff, or status"
+          },
+          related_task: {
+            type: "string",
+            description: "Optional related task ID"
+          }
         },
         required: ["content"]
       }
@@ -277,13 +378,33 @@ function getTools() {
     },
     {
       name: "fetch_tasks",
-      description: "Fetch all tasks or tasks assigned to this agent",
+      description: "Fetch project-scoped tasks with optional filters for ownership and status.",
       inputSchema: {
         type: "object",
         properties: {
           assigned_only: {
             type: "boolean",
             description: "If true, fetch only tasks assigned to current agent"
+          },
+          assigned_to: {
+            type: "string",
+            description: "Fetch tasks assigned to a specific agent"
+          },
+          created_by: {
+            type: "string",
+            description: "Fetch tasks created by a specific agent"
+          },
+          status: {
+            type: "string",
+            description: "Filter by task status"
+          },
+          include_completed: {
+            type: "boolean",
+            description: "Include completed tasks. Defaults to true."
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of tasks to return"
           }
         }
       }
@@ -293,7 +414,95 @@ function getTools() {
       description: "Fetch messages for the current agent",
       inputSchema: {
         type: "object",
-        properties: {}
+        properties: {
+          limit: {
+            type: "number",
+            description: "Maximum number of messages to return"
+          }
+        }
+      }
+    },
+    {
+      name: "create_project_map",
+      description: "Store a structured project-map entry so agents can reuse codebase understanding.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          file_path: {
+            type: "string",
+            description: "Relative file or module path. Use . for project-root summaries."
+          },
+          type: {
+            type: "string",
+            description: "Entry type such as file, folder, module, service, or project"
+          },
+          summary: {
+            type: "string",
+            description: "Short explanation of what this path or module is responsible for"
+          },
+          dependencies: {
+            type: "array",
+            items: { type: "string" }
+          },
+          exports: {
+            type: "array",
+            items: { type: "string" }
+          },
+          key_details: {
+            type: "array",
+            items: { type: "string" },
+            description: "Important architectural details, constraints, or conventions"
+          },
+          related_tasks: {
+            type: "array",
+            items: { type: "string" },
+            description: "Task IDs related to this map entry"
+          },
+          relationships: {
+            type: "object",
+            properties: {
+              parent: { type: "string" },
+              children: {
+                type: "array",
+                items: { type: "string" }
+              }
+            }
+          },
+          tags: {
+            type: "array",
+            items: { type: "string" }
+          },
+          metadata: {
+            type: "object",
+            description: "Extra structured details to preserve with the entry"
+          }
+        },
+        required: ["file_path", "type", "summary"]
+      }
+    },
+    {
+      name: "fetch_project_map",
+      description: "Fetch structured project-map entries for the current project.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          file_path: {
+            type: "string",
+            description: "Fetch a specific file or module path"
+          },
+          type: {
+            type: "string",
+            description: "Filter by project-map entry type"
+          },
+          query: {
+            type: "string",
+            description: "Text search across summary and structural details"
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of entries to return"
+          }
+        }
       }
     }
   ];
@@ -373,7 +582,8 @@ rl.on("line", async (line) => {
           body: JSON.stringify({
             ...args,
             agent: CONFIG.agent,
-            project: CONFIG.project
+            project: CONFIG.project,
+            created_by: args.created_by || CONFIG.agent
           })
         });
 
@@ -382,33 +592,88 @@ rl.on("line", async (line) => {
         });
       }
 
-      if (name === "fetch_tasks") {
-        const data = await callMemoryApi("/task/list");
-
-        let tasks = data;
-
-        if (args.assigned_only) {
-          tasks = tasks.filter(
-            (t) => t.assigned_to === CONFIG.agent
-          );
-        }
+      if (name === "assign_task") {
+        const data = await callMemoryApi("/task/assign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: args.task_id,
+            agent_id: args.agent_id || CONFIG.agent
+          })
+        });
 
         return respond(request.id, {
           content: [
             {
               type: "text",
-              text: JSON.stringify(tasks, null, 2)
+              text: data.success
+                ? `Task assigned: ${args.task_id}`
+                : data.error || "Task assignment failed"
+            }
+          ]
+        });
+      }
+
+      if (name === "update_task") {
+        const data = await callMemoryApi("/task/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: args.task_id,
+            updates: {
+              title: args.title,
+              description: args.description,
+              assigned_to: args.assigned_to,
+              status: args.status,
+              priority: args.priority,
+              dependencies: args.dependencies,
+              result: args.result,
+              blocker: args.blocker
+            }
+          })
+        });
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: data.success
+                ? JSON.stringify(data.task, null, 2)
+                : data.error || "Task update failed"
+            }
+          ]
+        });
+      }
+
+      if (name === "fetch_tasks") {
+        const data = await callMemoryApi(
+          buildEndpoint("/task/list", {
+            project: CONFIG.project,
+            assigned_to: args.assigned_only ? CONFIG.agent : args.assigned_to,
+            created_by: args.created_by,
+            status: args.status,
+            include_completed: args.include_completed,
+            limit: args.limit
+          })
+        );
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2)
             }
           ]
         });
       }
 
       if (name === "send_message") {
-        const data = await callMemoryApi("/message", {
+        await callMemoryApi("/message", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             from_agent: CONFIG.agent,
+            project: CONFIG.project,
             ...args
           })
         });
@@ -419,7 +684,57 @@ rl.on("line", async (line) => {
       }
 
       if (name === "request_messages") {
-        const data = await callMemoryApi(`/message/${CONFIG.agent}`);
+        const data = await callMemoryApi(
+          buildEndpoint(`/message/${CONFIG.agent}`, {
+            project: CONFIG.project,
+            limit: args.limit
+          })
+        );
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2)
+            }
+          ]
+        });
+      }
+
+      if (name === "create_project_map") {
+        const data = await callMemoryApi("/project-map", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...args,
+            agent: CONFIG.agent,
+            project: CONFIG.project,
+            scope: CONFIG.scope
+          })
+        });
+
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: data.success
+                ? `Project map stored\nPath: ${data.entry.file_path}`
+                : data.error || "Project map storage failed"
+            }
+          ]
+        });
+      }
+
+      if (name === "fetch_project_map") {
+        const data = await callMemoryApi(
+          buildEndpoint("/project-map", {
+            project: CONFIG.project,
+            file_path: args.file_path,
+            type: args.type,
+            query: args.query,
+            limit: args.limit
+          })
+        );
 
         return respond(request.id, {
           content: [

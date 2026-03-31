@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://coderooz.github.io/Local-MCP-Memory-Server/sitemap.xml

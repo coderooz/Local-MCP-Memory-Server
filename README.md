@@ -62,6 +62,7 @@ MongoDB (Persistence Layer)
 - Work coordination between agents
 - Task lifecycle:
   - pending → in_progress → completed / blocked
+- Supports claiming ownership and status handoffs
 - Prevents duplication of work
 
 ---
@@ -89,6 +90,7 @@ MongoDB (Persistence Layer)
   - dependencies
   - relationships
   - architecture patterns
+  - key implementation details and related tasks
 - Enables system-level reasoning
 
 ---
@@ -122,8 +124,9 @@ MongoDB (Persistence Layer)
 | Tool | Description |
 |------|------------|
 | `create_task` | Create task |
-| `fetch_tasks` | Get tasks |
-| *(API)* `/task/assign` | Assign task |
+| `fetch_tasks` | Get project-scoped tasks with filters |
+| `assign_task` | Claim or assign task ownership |
+| `update_task` | Update task status, blockers, or results |
 
 ---
 
@@ -131,7 +134,15 @@ MongoDB (Persistence Layer)
 | Tool | Description |
 |------|------------|
 | `send_message` | Send message |
-| `request_messages` | Fetch messages |
+| `request_messages` | Fetch project-scoped messages |
+
+---
+
+### 🗺 Project Map Tools
+| Tool | Description |
+|------|------------|
+| `create_project_map` | Store reusable project structure intelligence |
+| `fetch_project_map` | Retrieve project structure intelligence |
 
 ---
 
@@ -203,6 +214,36 @@ mcp-shim.js
 * Automatic project detection
 * Zero per-project config
 * Clean multi-project isolation
+
+### Project Identity
+
+Both `mcp-shim.js` and direct `mcp-server.js` launches now derive the project name from the same resolver and slugify it into a stable `MCP_PROJECT` value. Resolution order is:
+
+1. `.mcp-project` or `.mcp-project.json` in the project root
+2. `MCP_PROJECT` from the project `.env`
+3. `package.json` name / `mcpProject`
+4. nearest project-root folder name
+
+The shim also injects `MCP_PROJECT_ROOT` so agents can trace which workspace produced a memory entry. This repository now pins its identifier with `.mcp-project` and `.env` to `local-mcp-server`, so it will not inherit a generic workspace name like `vscode`.
+
+If you already have old documents stored under another project name such as `vscode`, run `npm run migrate:project-id -- vscode local-mcp-server` to rewrite existing records in MongoDB.
+
+---
+
+## 📚 Documentation Site
+
+A GitHub Pages-ready documentation site now lives in the [`docs/`](./docs/) folder.
+
+It includes:
+
+* installation and setup guidance
+* editor and MCP integration patterns
+* tool and API reference
+* project identity and migration guidance
+* copyable examples
+* multilingual navigation
+
+To publish it, enable GitHub Pages for the repository branch and select the `/docs` folder as the source.
 
 ---
 

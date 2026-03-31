@@ -6,6 +6,57 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.1.0] — Documentation Site, Project Identity & Coordination Upgrades
+
+### Added
+
+* Added MCP project intelligence tools:
+
+  * `create_project_map`
+  * `fetch_project_map`
+  
+* Added missing task coordination tools:
+
+  * `assign_task`
+  * `update_task`
+
+* Added richer project map persistence fields:
+
+  * `key_details`
+  * `related_tasks`
+  * `last_verified_at`
+* Added a GitHub Pages-ready documentation site in `docs/` with:
+
+  * installation and setup guidance
+  * integration walkthroughs
+  * MCP tool and API reference
+  * project identity guidance
+  * copyable examples
+  * multilingual language switching
+* Added documentation site assets and metadata:
+
+  * `favicon.ico`
+  * `favicon.svg`
+  * web manifest
+  * robots.txt
+  * sitemap.xml
+* Added project identity migration tooling:
+
+  * `.mcp-project`
+  * `migrate-project-id.js`
+
+### Changed
+
+* Scoped `fetch_tasks` to the active project and added filtering by assignment, creator, status, and limit
+* Scoped messaging retrieval to the active project to avoid cross-project coordination bleed
+* Upgraded project-map storage to upsert by `project + file_path`, making the structure knowledge reusable instead of duplicative
+* Unified project identity derivation across `mcp-shim.js` and direct `mcp-server.js` launches with a shared resolver, `MCP_PROJECT_ROOT`, and project-local override support via `.mcp-project`
+* Updated agent instructions and README to reflect the task-claiming and project-map workflow
+* Updated the validation script to include syntax checking for `docs/app.js`
+* Expanded project bootstrap guidance to include the current tool surface and project-map seeding guidance
+
+---
+
 ## [v2.0.0] — Multi-Agent System & MCP Evolution
 
 Major architectural upgrade introducing a distributed multi-agent system with tasks, messaging, agent coordination, and project intelligence.

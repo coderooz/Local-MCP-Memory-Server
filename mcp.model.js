@@ -6,6 +6,22 @@ export const MEMORY_SCOPE = {
   GLOBAL: "global"
 };
 
+function toStringArray(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === "string" && item.trim())
+    : [];
+}
+
+function normalizeRelationships(value = {}) {
+  return {
+    parent:
+      typeof value.parent === "string" && value.parent.trim()
+        ? value.parent
+        : null,
+    children: toStringArray(value.children)
+  };
+}
+
 export class BaseModel {
   constructor(data = {}) {
     this.id = data.id || uuidv4();
@@ -115,7 +131,9 @@ export class TaskModel extends BaseModel {
     // pending | in_progress | blocked | completed
 
     this.priority = data.priority || 3;
-    this.dependencies = data.dependencies || [];
+    this.dependencies = toStringArray(data.dependencies);
+    this.result = data.result || null;
+    this.blocker = data.blocker || null;
   }
 }
 
@@ -140,18 +158,19 @@ export class ProjectMapModel extends BaseModel {
   constructor(data = {}) {
     super(data);
 
+    this.map_id = data.map_id || this.id;
     this.file_path = data.file_path || "";
     this.type = data.type || "unknown";
 
     this.summary = data.summary || "";
 
-    this.dependencies = data.dependencies || [];
-    this.exports = data.exports || [];
+    this.dependencies = toStringArray(data.dependencies);
+    this.exports = toStringArray(data.exports);
+    this.key_details = toStringArray(data.key_details);
+    this.related_tasks = toStringArray(data.related_tasks);
 
-    this.relationships = data.relationships || {
-      parent: null,
-      children: []
-    };
+    this.relationships = normalizeRelationships(data.relationships);
+    this.last_verified_at = data.last_verified_at || new Date();
   }
 }
 

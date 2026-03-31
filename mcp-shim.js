@@ -1,57 +1,35 @@
 #!/usr/bin/env node
 
-import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+
+import {
+  findProjectRoot,
+  resolveProjectIdentity
+} from "./utils/projectIdentity.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const initialProjectRoot = findProjectRoot(process.cwd());
 
-function hasMarker(directory) {
-  const markers = [
-    ".git",
-    ".roo",
-    "package.json",
-    "pyproject.toml",
-    "requirements.txt",
-    "Pipfile",
-    ".venv"
-  ];
+dotenv.config({
+  path: path.join(initialProjectRoot, ".env"),
+  quiet: true
+});
 
-  return markers.some((marker) => fs.existsSync(path.join(directory, marker)));
-}
-
-function findProjectRoot(startDirectory) {
-  let current = path.resolve(startDirectory);
-
-  while (true) {
-    if (hasMarker(current)) {
-      return current;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return path.resolve(startDirectory);
-    }
-
-    current = parent;
-  }
-}
-
-function slugifyProjectName(name) {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "default-project";
-}
-
-const projectRoot = findProjectRoot(process.cwd());
-const derivedProject = slugifyProjectName(path.basename(projectRoot));
+const { projectRoot, project: derivedProject } = resolveProjectIdentity(
+  process.cwd(),
+  process.env
+);
 
 if (!process.env.MCP_PROJECT) {
   process.env.MCP_PROJECT = derivedProject;
+}
+
+if (!process.env.MCP_PROJECT_ROOT) {
+  process.env.MCP_PROJECT_ROOT = projectRoot;
 }
 
 if (!process.env.MCP_SCOPE) {

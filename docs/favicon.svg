@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Local MCP Memory Server icon">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d6b57" />
+      <stop offset="100%" stop-color="#14463a" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d97732" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#f2b35d" stop-opacity="0.35" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="80" height="80" rx="24" fill="url(#bg)" />
+  <path d="M26 30h44" stroke="url(#glow)" stroke-width="6" stroke-linecap="round" />
+  <path d="M29 63V38h7l12 13 12-13h7v25h-8V50L48 61 37 50v13z" fill="#fef8ef" />
+</svg>

@@ -6,6 +6,23 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.2.1] - Documentation Modularization & Release Readiness
+
+### Changed
+
+* Refactored `docs/app.js` into a more modular, section-driven documentation renderer that is easier to maintain and update.
+* Reworked the documentation site copy to present the project with production-ready, professional messaging aligned to the public Coderooz case study.
+* Removed incomplete or draft-style references from the published docs experience and simplified the page flow for deployment.
+* Simplified the docs runtime by removing the multilingual content layer from `docs/app.js` and focusing the published experience on a polished English release page.
+
+### Updated
+
+* Updated release metadata and public documentation version references to `v2.2.1`.
+* Kept the GitHub Pages documentation output aligned with the current package release state.
+* Updated the docs site to fetch the displayed release version from the repository `package.json` at runtime, with a safe fallback when the remote version cannot be read.
+
+---
+
 ## [v2.2.0] - Collaborative Multi-Agent System 
 
 Human + Agent Collaboration

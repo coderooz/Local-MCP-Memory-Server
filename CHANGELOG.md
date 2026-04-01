@@ -6,6 +6,58 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.2.0] - Collaborative Multi-Agent System 
+
+Human + Agent Collaboration
+
+### Added
+
+* Added a live activity stream with persisted `activity` entries and project-scoped retrieval.
+* Added soft resource locks with expiration, release flow, and active-lock listing.
+* Added MCP collaboration tools for:
+  * `record_activity`
+  * `fetch_activity`
+  * `acquire_resource_lock`
+  * `release_resource_lock`
+  * `fetch_resource_locks`
+* Added collaboration-aware update warnings based on:
+  * active locks
+  * task ownership boundaries
+  * expected version mismatches
+  * expected timestamp mismatches
+* Added activity logging hooks across:
+  * context updates
+  * project descriptor updates
+  * actions
+  * task changes
+  * issue changes
+  * messages
+  * agent registration and heartbeat
+* Added new persistence utilities:
+  * `utils/activityTracker.js`
+  * `utils/collaborationEngine.js`
+
+### Improved
+
+* Extended the project descriptor system so it remains the baseline project context for collaboration-aware agents.
+* Improved context graph retrieval to include related agents alongside memory, tasks, issues, actions, and versions.
+* Improved task, issue, and project-map models with conflict reference support for concurrent collaboration traces.
+* Updated agent instructions to reflect:
+  * project descriptor usage
+  * live activity tracking
+  * user parallel presence
+  * soft locks
+  * conflict-aware execution
+* Updated the documentation site and README to present the system as a human-plus-agent collaboration platform instead of a memory-only server.
+
+### Fixed
+
+* Fixed missing documentation alignment between the implemented coordination system and the published entry points.
+* Fixed release metadata drift by aligning the package and MCP transport version to `v2.2.0`.
+* Fixed syntax validation coverage to include the new collaboration and activity utilities.
+
+---
+
 ## [v2.1.0] — Documentation Site, Project Identity & Coordination Upgrades
 
 ### Added

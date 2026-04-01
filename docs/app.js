@@ -15,6 +15,7 @@ const languages = [
 
 const sectionIds = [
   "overview",
+  "collaboration",
   "quickstart",
   "setup",
   "integration",
@@ -33,7 +34,7 @@ const shared = {
     { label: "Repository", value: "coderooz/Local-MCP-Memory-Server" },
     { label: "Runtime", value: "Node.js, Express, MongoDB" },
     { label: "Protocol", value: "Model Context Protocol (JSON-RPC over stdio)" },
-    { label: "Primary goal", value: "Persistent memory and multi-agent coordination" }
+    { label: "Primary goal", value: "Human-plus-agent collaboration with durable memory and safe coordination" }
   ],
   prerequisites: [
     "Node.js 18+ so the built-in fetch API and modern ESM syntax work cleanly.",
@@ -117,7 +118,12 @@ const shared = {
       items: [
         ["store_context", "Store durable, reusable memory as content text."],
         ["search_context", "Search stored memory with Mongo text search plus app-side ranking."],
+        ["update_context", "Update memory with version tracking and collaboration warnings."],
         ["get_full_context", "Fetch a context entry together with related actions."],
+        ["get_connected_context", "Fetch memory together with linked tasks, issues, actions, versions, and agents."],
+        ["set_project_descriptor", "Store the structured project descriptor used as baseline project context."],
+        ["get_project_descriptor", "Fetch the active project descriptor."],
+        ["optimize_memory", "Run memory decay, promotion, and archival checks."],
         ["log_action", "Record meaningful implementation changes for traceability."],
         ["start_session", "Mark a working session for long-running tasks."],
         ["get_logs", "Read backend logs without touching MCP stdout."]
@@ -129,16 +135,25 @@ const shared = {
         ["create_task", "Create project-scoped work items before large or shared changes."],
         ["fetch_tasks", "Read filtered task lists by assignment, creator, status, or limit."],
         ["assign_task", "Claim ownership or hand work to another agent."],
-        ["update_task", "Update blockers, status, dependencies, priority, and handoff results."]
+        ["update_task", "Update blockers, status, dependencies, priority, handoff results, and collaboration-aware warnings."],
+        ["create_issue", "Create bugs, notes, blockers, or insights linked to shared work."],
+        ["resolve_issue", "Resolve an issue when the blocker or observation is closed."],
+        ["fetch_issues", "Read current issues for the active project."]
       ]
     },
     {
-      name: "Messaging and Agent Presence",
+      name: "Messaging, Presence, and Collaboration",
       items: [
         ["send_message", "Send coordination, blocker, status, or handoff messages."],
         ["request_messages", "Read project-scoped messages for the current agent."],
         ["register_agent", "Register an agent identity in the system."],
-        ["list_agents", "See the currently known agents."]
+        ["heartbeat_agent", "Keep the agent registry fresh with active, idle, or offline state."],
+        ["list_agents", "See the currently known agents."],
+        ["record_activity", "Append a live activity entry for project visibility."],
+        ["fetch_activity", "Read the live activity stream."],
+        ["acquire_resource_lock", "Request a soft lock for a shared resource before editing."],
+        ["release_resource_lock", "Release a soft lock after the shared work is done."],
+        ["fetch_resource_locks", "Inspect active locks before entering contested work."]
       ]
     },
     {
@@ -146,6 +161,7 @@ const shared = {
       items: [
         ["create_project_map", "Store structured project knowledge for files, folders, modules, or the project root."],
         ["fetch_project_map", "Retrieve project-map entries so future agents do not re-map the repository from scratch."],
+        ["fetch_metrics", "Read task, memory, and collaboration metrics."],
         ["get_agent_instructions", "Read the current system-level instruction contract the transport exposes."]
       ]
     }
@@ -157,8 +173,13 @@ shared.apiGroups = [
     name: "Contexts and Actions",
     items: [
       ["POST /context", "Create a persisted memory entry."],
+      ["POST /project/descriptor", "Create or update the structured project descriptor."],
+      ["GET /project/descriptor", "Fetch the active project descriptor for a project."],
       ["POST /context/search", "Search memory for a given agent and project."],
+      ["POST /context/update", "Update memory with version tracking and collaboration-aware warnings."],
       ["GET /context/:id/full", "Fetch one context and its related actions."],
+      ["GET /context/:id/connected", "Fetch connected context graph data, including tasks, issues, versions, and agents."],
+      ["POST /memory/optimize", "Run the memory optimization engine."],
       ["POST /action", "Write an action log entry."],
       ["POST /session", "Create a tracked working session."]
     ]
@@ -167,20 +188,30 @@ shared.apiGroups = [
     name: "Tasks, Messaging, and Agents",
     items: [
       ["POST /agent/register", "Register or refresh an agent record."],
+      ["POST /agent/heartbeat", "Refresh an agent heartbeat and derived status."],
       ["GET /agent/list", "List agents."],
       ["POST /task", "Create a task."],
       ["POST /task/assign", "Assign or claim a task."],
       ["POST /task/update", "Update task status, ownership, blockers, or results."],
       ["GET /task/list", "Fetch project-aware task lists with filters."],
+      ["POST /issue", "Create an issue or note linked to memory and tasks."],
+      ["POST /issue/resolve", "Resolve an issue."],
+      ["GET /issue/list", "Fetch project-scoped issues."],
       ["POST /message", "Send an inter-agent message."],
       ["GET /message/:agent_id", "Fetch project-scoped messages for an agent."]
     ]
   },
   {
-    name: "Project Map and Diagnostics",
+    name: "Activity, Locks, Project Map, and Diagnostics",
     items: [
+      ["POST /activity", "Record a live activity entry."],
+      ["GET /activity", "Fetch the project activity stream."],
+      ["POST /lock/acquire", "Attempt to acquire a soft resource lock."],
+      ["POST /lock/release", "Release a previously held soft lock."],
+      ["GET /lock/list", "List active soft locks."],
       ["POST /project-map", "Create or upsert a project-map entry by project plus file_path."],
       ["GET /project-map", "Query project-map entries by project, file_path, type, text query, and limit."],
+      ["GET /metrics", "Query collaboration, memory, and task metrics."],
       ["POST /logs", "Query recent logs."],
       ["POST /log", "Write a single log entry."],
       ["GET /", "Simple health check response."]
@@ -257,6 +288,38 @@ MCP_SERVER_URL=http://localhost:4000`
 }`
   },
   {
+    id: "lock",
+    title: "Acquire a soft lock before shared work",
+    blurb:
+      "Use a soft lock when you are about to modify a file, module, or shared task area that another agent or the user may also be touching.",
+    language: "json",
+    filename: "lock-request.json",
+    code: `{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "acquire_resource_lock",
+    "arguments": {
+      "resource": "project-map:server.js",
+      "expiresInMs": 300000,
+      "metadata": {
+        "reason": "Updating collaboration routes"
+      }
+    }
+  }
+}`
+  },
+  {
+    id: "activity",
+    title: "Read the live project activity stream",
+    blurb:
+      "This helps humans and agents see what changed recently before starting overlapping work.",
+    language: "bash",
+    filename: "fetch-activity.sh",
+    code: `curl "http://localhost:4000/activity?project=local-mcp-server&limit=20"`
+  },
+  {
     id: "rest",
     title: "Read the project map through the API",
     blurb:
@@ -295,10 +358,15 @@ shared.architectureFlow = [
   {
     title: "4. Persistence",
     body:
-      "MongoDB stores contexts, actions, sessions, agents, tasks, messages, logs, and project-map entries."
+      "MongoDB stores contexts, versions, actions, sessions, agents, tasks, issues, messages, activity, resource locks, metrics, logs, and project-map entries."
   },
   {
-    title: "5. Reuse loop",
+    title: "5. Collaboration safety",
+    body:
+      "The activity stream, soft locks, expected-version checks, and task ownership boundaries help humans and agents work in parallel without silently colliding."
+  },
+  {
+    title: "6. Reuse loop",
     body:
       "Future agents read tasks, messages, memory, and the project map before taking action."
   }
@@ -318,7 +386,9 @@ shared.troubleshooting = [
   "If the API is unreachable, verify that MongoDB is running and that `MONGO_URI` points to the correct database.",
   "If you see protocol issues, keep stdout reserved for JSON-RPC only and send logs to stderr or the database.",
   "If task coordination feels noisy, filter `fetch_tasks` by status or assignee and keep `send_message` focused on blockers, handoffs, and status.",
-  "If search results look weak, confirm that the startup index creation step still runs before the API begins serving requests."
+  "If search results look weak, confirm that the startup index creation step still runs before the API begins serving requests.",
+  "If you receive collaboration warnings, inspect `fetch_activity`, `fetch_resource_locks`, and the relevant task assignment before forcing overlapping work.",
+  "If a soft lock seems stuck, check the expiration time first; expired locks are cleaned automatically."
 ];
 
 shared.faq = [
@@ -341,6 +411,16 @@ shared.faq = [
     q: "Can I run the API separately from the MCP transport?",
     a:
       "Yes. `server.js` can run as a standalone API, while `mcp-server.js` can connect to it using `MCP_SERVER_URL`."
+  },
+  {
+    q: "Do soft locks block the user?",
+    a:
+      "No. They are warnings for safer collaboration, not hard blockers. The goal is visibility and coordination, not preventing human action."
+  },
+  {
+    q: "How should I handle a concurrent-change warning?",
+    a:
+      "Treat it as meaningful system state. Review activity, check the related task and locks, and decide whether to re-read the resource, coordinate first, or continue with clear traceability."
   }
 ];
 
@@ -358,9 +438,9 @@ const baseContent = {
   meta: {
     title: "Local MCP Memory Server Docs",
     description:
-      "Detailed documentation for Local MCP Memory Server: installation, setup, integration, tools, API reference, project identity, project map workflows, and production-ready examples.",
+      "Detailed documentation for Local MCP Memory Server: installation, architecture, project descriptors, live activity tracking, human-plus-agent collaboration, soft locks, API reference, and production-ready examples.",
     keywords:
-      "MCP, Model Context Protocol, memory server, multi-agent, MongoDB, task coordination, project map, GitHub Pages documentation"
+      "MCP, Model Context Protocol, memory server, multi-agent, MongoDB, task coordination, activity stream, soft locks, human agent collaboration, GitHub Pages documentation"
   },
   ui: {
     languageLabel: "Language",
@@ -374,6 +454,7 @@ const baseContent = {
   brandTagline: "Documentation for persistent memory and multi-agent coordination",
   nav: {
     overview: "Overview",
+    collaboration: "Human + Agent Collaboration",
     quickstart: "Quick Start",
     setup: "Project Setup",
     integration: "Integration",
@@ -390,7 +471,7 @@ const baseContent = {
     eyebrow: "Production-minded MCP Documentation",
     title: "Build, wire, and operate Local MCP Memory Server with confidence.",
     subtitle:
-      "This documentation is written for people who want more than a quick install snippet. It walks through setup, editor integration, persistent memory, task coordination, project-map usage, identity handling, examples, and practical operations so you can ship it without guesswork.",
+      "This documentation is written for people who want more than a quick install snippet. It walks through setup, editor integration, project descriptors, persistent memory, live activity tracking, soft-lock collaboration, task coordination, project-map usage, identity handling, examples, and practical operations so you can ship it without guesswork.",
     primaryCta: "Start with setup",
     primaryHref: "#setup",
     secondaryCta: "See examples",
@@ -417,7 +498,7 @@ const baseContent = {
     overview: {
       title: "What This Project Actually Does",
       intro:
-        "Local MCP Memory Server is not just a note bucket for agents. It is a MongoDB-backed coordination layer for MCP clients that need durable memory, traceable actions, project-aware task flow, inter-agent messaging, and structured project intelligence.",
+        "Local MCP Memory Server is not just a note bucket for agents. It is a MongoDB-backed coordination layer for MCP clients that need durable memory, traceable actions, project-aware task flow, inter-agent messaging, structured project intelligence, and safe human-plus-agent parallel work.",
       cards: [
         {
           title: "Persistent memory",
@@ -430,6 +511,11 @@ const baseContent = {
             "Agents can create, assign, fetch, and update tasks before acting, which lowers duplicate work and makes handoffs explicit."
         },
         {
+          title: "Live collaboration visibility",
+          body:
+            "The activity stream and soft locks give humans and agents a shared picture of who is working where right now."
+        },
+        {
           title: "Project map intelligence",
           body:
             "Instead of re-reading the codebase from scratch every time, agents can store and fetch structural summaries for files, folders, modules, and the project root."
@@ -440,6 +526,11 @@ const baseContent = {
             "The transport keeps stdout reserved for JSON-RPC, while logging and persistence happen through the API and MongoDB."
         }
       ]
+    },
+    collaboration: {
+      title: "Human + Agent Collaboration",
+      intro:
+        "The collaboration layer is designed to make parallel work visible and safer. It does not hard-block humans. Instead, it surfaces ownership, activity, locks, and overlap warnings early enough for people and agents to coordinate."
     },
     quickstart: {
       title: "Quick Start Without the Guesswork",
@@ -1111,6 +1202,17 @@ function render(content) {
       <p class="mini-note">${content.showcase.note}</p>
     </div>
   `;
+
+  renderSimpleSection(
+    "collaboration",
+    content,
+    `<div class="card-grid">
+      <article class="info-card"><h3>Project descriptor first</h3><p>Agents should use the project descriptor as baseline context before making architectural assumptions or coordination decisions.</p></article>
+      <article class="info-card"><h3>Live activity stream</h3><p>The activity feed provides near-real-time visibility into decisions, task changes, and coordination events so humans and agents can see what just happened.</p></article>
+      <article class="info-card"><h3>Soft locks, not hard blockers</h3><p>Locks warn about contested resources such as files, modules, or tasks. They are meant to reduce overlap without preventing human action.</p></article>
+      <article class="info-card"><h3>Concurrent change warnings</h3><p>Updates can compare expected versions or timestamps and surface warnings when the resource changed since the caller last read it.</p></article>
+    </div>`
+  );
 
   renderSimpleSection(
     "quickstart",

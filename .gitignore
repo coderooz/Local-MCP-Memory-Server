@@ -140,3 +140,5 @@ vite.config.ts.timestamp-*
 
 # Changes
 *.patch
+CODEBASE.md
+result.md

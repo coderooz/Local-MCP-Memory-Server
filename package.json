@@ -1,6 +1,6 @@
 {
   "name": "local-mcp-memory",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Persistent multi-agent memory server using MCP protocol",
   "main": "mcp-server.js",
   "scripts": {

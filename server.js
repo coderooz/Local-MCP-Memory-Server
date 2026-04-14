@@ -45,8 +45,15 @@ import {
   upsertProjectDescriptor,
   updateContextWithVersioning
 } from "./utils/memoryEngine.js";
+import {
+  resetMCP,
+  estimateResetImpact,
+  RESET_LEVELS,
+  RESET_CONFIRMATION_CODE
+} from "./utils/resetEngine.js";
 import { recordActivity } from "./utils/activityTracker.js";
 import { routeHandler } from "./utils/routeHandler.js";
+import { resolveProjectIdentity } from "./utils/projectIdentity.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,6 +113,18 @@ function toStringArray(value) {
 
 function hasText(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function sanitizeIdentifier(value) {
+  if (typeof value !== "string") {
+    return String(value);
+  }
+  return value
+    .replace(/[<>]/g, "")
+    .replace(/javascript:/gi, "")
+    .replace(/on\w+=/gi, "")
+    .trim()
+    .substring(0, 128);
 }
 
 function rankSearchResults(results, query) {
@@ -1067,10 +1086,15 @@ app.post("/log", async (req, res) => {
 app.post(
   "/agent/register",
   routeHandler("agents", async ({ req, collection, db: database }) => {
-    const existing = await collection.findOne({ agent_id: req.body.agent_id });
+    const identity = resolveProjectIdentity();
+    const sanitizedAgentId = sanitizeIdentifier(req.body.agent_id);
+    const existing = await collection.findOne({ agent_id: sanitizedAgentId });
     const draftAgent = new AgentModel({
       ...existing,
       ...req.body,
+      agent: sanitizeIdentifier(req.body.agent) || sanitizedAgentId || identity.agent,
+      agent_id: sanitizedAgentId || identity.agent,
+      project: req.body.project || identity.project,
       capabilities:
         req.body.capabilities ?? existing?.capabilities ?? [],
       last_seen: new Date()
@@ -1750,6 +1774,132 @@ app.get(
 app.get("/", (_req, res) => {
   res.send("MCP Memory Server Running");
 });
+
+/**
+ * POST /reset
+ * Execute MCP reset operation with safety checks.
+ * 
+ * Body parameters:
+ * - level: "minor" | "moderate" | "major" | "severe"
+ * - project: Project name (optional for minor/moderate)
+ * - agent: Agent performing reset (optional)
+ * - confirmation: Required for "severe" level (must be "MCP_RESET_CONFIRM")
+ * 
+ * @example
+ * // Minor reset
+ * POST /reset { "level": "minor", "project": "my-project" }
+ * 
+ * @example
+ * // Severe reset (requires confirmation)
+ * POST /reset { 
+ *   "level": "severe", 
+ *   "project": "old-project",
+ *   "confirmation": "MCP_RESET_CONFIRM"
+ * }
+ */
+app.post(
+  "/reset",
+  routeHandler("logs", async ({ req, db: database }) => {
+    const { level, project, agent, confirmation } = req.body;
+
+    // Validate level
+    const validLevels = Object.values(RESET_LEVELS);
+    if (!level || !validLevels.includes(level)) {
+      return {
+        error: `Invalid reset level. Valid levels: ${validLevels.join(", ")}`
+      };
+    }
+
+    // Severe reset requires confirmation
+    if (level === RESET_LEVELS.SEVERE) {
+      if (confirmation !== RESET_CONFIRMATION_CODE) {
+        return {
+          error: "SEVERE reset requires confirmation code 'MCP_RESET_CONFIRM'",
+          required: true
+        };
+      }
+      if (!project) {
+        return {
+          error: "SEVERE reset requires a specific project target"
+        };
+      }
+    }
+
+    try {
+      const result = await resetMCP(database, {
+        level,
+        project,
+        agent: agent || req.body.agent || "system",
+        confirmation
+      });
+
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
+
+/**
+ * GET /reset/estimate
+ * Preview reset impact before executing.
+ * 
+ * Query parameters:
+ * - level: "minor" | "moderate" | "major" | "severe"
+ * - project: Project name (optional)
+ * 
+ * @example
+ * GET /reset/estimate?level=moderate&project=my-project
+ */
+app.get(
+  "/reset/estimate",
+  routeHandler("logs", async ({ req, db: database }) => {
+    const { level, project } = req.query;
+
+    if (!level) {
+      return { error: "Missing required parameter: level" };
+    }
+
+    const validLevels = Object.values(RESET_LEVELS);
+    if (!validLevels.includes(level)) {
+      return {
+        error: `Invalid reset level. Valid levels: ${validLevels.join(", ")}`
+      };
+    }
+
+    const impact = await estimateResetImpact(database, level, project || null);
+
+    return {
+      success: true,
+      impact
+    };
+  })
+);
+
+/**
+ * GET /config/status
+ * Check MCP configuration status.
+ * 
+ * Returns configuration hierarchy and source information.
+ * 
+ * @example
+ * GET /config/status
+ * Response: { exists: true, hierarchy: "project", source: ".mcp-project" }
+ */
+app.get(
+  "/config/status",
+  routeHandler("contexts", async ({ req }) => {
+    const { checkConfigExists } = await import("./utils/projectIdentity.js");
+    const status = checkConfigExists(req.query.directory || process.cwd());
+    return status;
+  })
+);
 
 export async function startServer({ port = DEFAULT_PORT, silent = false } = {}) {
   if (server) {

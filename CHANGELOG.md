@@ -6,6 +6,117 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.4.0] - Identity Resolution & Reset System
+
+### Critical Fixes
+
+**Identity Resolution System Overhaul**
+
+* Completely rewrote `utils/projectIdentity.js` to enforce strict configuration hierarchy:
+  * Priority 1: Project-level config (.mcp-project, .mcp-project.json)
+  * Priority 2: Global config (~/.mcp/config.json)
+  * Priority 3: Environment variables (MCP_PROJECT, MCP_AGENT)
+  * Priority 4: THROWS MCPSetupRequiredError if no config found
+* Added `MCPSetupRequiredError` custom error class for missing configuration
+* Added `CONFIG_HIERARCHY` enum for tracking configuration source
+* Added `checkConfigExists()` function for pre-flight configuration validation
+* Added `setupMCP()` function for auto-configuration generation
+* Added `getSetupPrompt()` function for interactive setup guidance
+* Added `resolveIdentity()` function with strict mode (throws on missing config)
+* Fixed agent/project resolution to NOT silently fall back to "unknown"/"default"
+* Added agent and scope resolution to project identity (previously only resolved project)
+* Added source and hierarchy tracking to all identity returns
+
+**Agent Instructions Update**
+
+* Updated `agent-instruction.js` to include:
+  * Configuration hierarchy documentation
+  * Setup flow for missing configuration
+  * MCP Reset System documentation
+  * Strict identity validation rules
+* Added requirement: "NEVER operate with agent='unknown' or project='default'"
+* Added workflow step 0: Verify identity resolution succeeded
+
+### New Features
+
+**MCP Reset System**
+
+* Added `utils/resetEngine.js` - Complete reset management system with safety locks
+* Added reset levels:
+  * MINOR: Clean logs, temp contexts, stale sessions (preserves tasks/agents)
+  * MODERATE: Clean completed tasks, archived contexts
+  * MAJOR: Clean most data except active tasks and agents
+  * SEVERE: Complete wipe - REQUIRES explicit "MCP_RESET_CONFIRM" code
+* Added safety features:
+  * Severe resets require explicit "MCP_RESET_CONFIRM" confirmation
+  * All reset operations are logged to activity stream
+  * Detailed summary returned for all operations
+  * `estimateResetImpact()` for preview before reset
+* Added API endpoints:
+  * POST /reset - Execute reset operation
+  * GET /reset/estimate - Preview reset impact
+  * GET /config/status - Check configuration status
+* Added `reset_mcp` MCP tool for agent-accessible reset operations
+
+**Function Documentation**
+
+* Added comprehensive JSDoc documentation to all core functions:
+  * `utils/projectIdentity.js`: All functions documented with examples
+  * `utils/resetEngine.js`: All functions documented with parameters and return values
+* Added `@param`, `@returns`, `@throws`, `@example` to all public functions
+* Added `@readonly` and `@enum` annotations for constants
+
+### Breaking Changes
+
+* Identity resolution now THROWS `MCPSetupRequiredError` instead of silently using "unknown"/"default"
+* Server will not start without valid configuration (unless NODE_ENV=test)
+* Severe reset now requires explicit project target (cannot wipe entire database)
+
+### Migration Guide
+
+1. **For existing projects**: Create `.mcp-project` file or set MCP_PROJECT/MCP_AGENT env vars
+2. **For agents**: Update to handle `MCPSetupRequiredError` and prompt for setup if thrown
+3. **For severe resets**: Must now provide project target AND "MCP_RESET_CONFIRM" code
+
+### Security Improvements
+
+* Added explicit confirmation requirement for destructive operations
+* Added configuration validation to prevent misconfigured agents
+* Added audit trail for all reset operations
+* Added input sanitization (`sanitizeIdentifier()`) to strip XSS patterns from agent IDs
+* Stripping of `<>`, `javascript:`, and `on*=`` patterns from user inputs
+
+### Bug Fixes
+
+* Fixed `fs.readFileSync(filePath, 0)` encoding bug - Changed to `fs.readFileSync(filePath, "utf8")`
+* Fixed agent registration to use resolved identity when project/agent not explicitly provided
+* Fixed response format handling for various API endpoints
+
+### Validation Tests Added
+
+* `tests/validation-test.js` - Identity resolution and reset system tests (15/15 passing)
+* `tests/multi-project-isolation-test.js` - Multi-project isolation validation (11/11 passing)
+* `tests/persistent-agent-registry-test.js` - Agent registry persistence tests
+* `tests/multi-agent-coordination-test.js` - Multi-agent workflow simulation
+* `tests/conflict-detection-test.js` - Conflict detection and resolution tests
+* `tests/vulnerability-test.js` - Security and vulnerability tests
+
+### Validation Results
+
+All validation tests passing:
+- ✅ Identity resolution fixed (no more unknown/default)
+- ✅ Configuration hierarchy enforced
+- ✅ Setup flow implemented
+- ✅ Reset system with safety locks
+- ✅ Multi-project isolation verified
+- ✅ Agent registry persistence working
+- ✅ Resource lock conflicts detected
+- ✅ Message passing between agents working
+- ✅ Activity tracking functional
+- ✅ Security hardening applied
+
+---
+
 ## [v2.3.0] - Browser Automation Module
 
 ### Added

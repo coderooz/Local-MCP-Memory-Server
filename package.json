@@ -1,6 +1,6 @@
 {
   "name": "local-mcp-memory",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "description": "Persistent multi-agent memory server using MCP protocol",
   "main": "mcp-server.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "start:api": "node server.js",
     "migrate:project-id": "node migrate-project-id.js",
     "docs:screenshots": "node tests/generate-doc-screenshots.js",
-    "check": "node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check mcp.model.js && node --check logger.js && node --check agent-instruction.js && node --check utils/projectIdentity.js && node --check utils/routeHandler.js && node --check utils/eventBus.js && node --check utils/coordinationEngine.js && node --check utils/collaborationEngine.js && node --check utils/activityTracker.js && node --check utils/memoryEngine.js && node --check utils/metrics.js && node --check docs/app.js && node --check tools/browserTools.js && node --check tools/index.js && node --check tools/store_context.js",
+    "check": "node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check mcp.model.js && node --check logger.js && node --check agent-instruction.js && node --check utils/projectIdentity.js && node --check utils/routeHandler.js && node --check utils/eventBus.js && node --check utils/coordinationEngine.js && node --check utils/collaborationEngine.js && node --check utils/activityTracker.js && node --check utils/memoryEngine.js && node --check utils/metrics.js && node --check utils/resetEngine.js && node --check docs/app.js && node --check tools/browserTools.js && node --check tools/index.js && node --check tools/store_context.js",
     "test": "npm run check"
   },
   "type": "module",

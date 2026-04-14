@@ -72,7 +72,7 @@ export function getTools() {
                     url: { type: "string", description: "The URL to navigate to (http/https only)" },
                     waitUntil: { type: "string", enum: ["load", "domcontentloaded", "networkidle"], description: "When to consider navigation complete" }
                 },
-                required: ["url"]
+                required: ["sessionId", "url"]
             }
         },
         {
@@ -83,7 +83,8 @@ export function getTools() {
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" },
                     format: { type: "string", enum: ["text", "html"], description: "Output format" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -96,7 +97,7 @@ export function getTools() {
                     selector: { type: "string", description: "CSS selector for the element" },
                     timeout: { type: "number", description: "Timeout in milliseconds" }
                 },
-                required: ["selector"]
+                required: ["sessionId", "selector"]
             }
         },
         {
@@ -110,7 +111,7 @@ export function getTools() {
                     value: { type: "string", description: "Value to fill" },
                     clear: { type: "boolean", description: "Clear before filling (default: true)" }
                 },
-                required: ["selector", "value"]
+                required: ["sessionId", "selector", "value"]
             }
         },
         {
@@ -122,7 +123,7 @@ export function getTools() {
                     sessionId: { type: "string", description: "Session ID from open_browser" },
                     selector: { type: "string", description: "CSS selector" }
                 },
-                required: ["selector"]
+                required: ["sessionId", "selector"]
             }
         },
         {
@@ -134,7 +135,7 @@ export function getTools() {
                     sessionId: { type: "string", description: "Session ID from open_browser" },
                     script: { type: "string", description: "JavaScript code to execute" }
                 },
-                required: ["script"]
+                required: ["sessionId", "script"]
             }
         },
         {
@@ -146,7 +147,8 @@ export function getTools() {
                     sessionId: { type: "string", description: "Session ID from open_browser" },
                     path: { type: "string", description: "Optional file path to save screenshot" },
                     fullPage: { type: "boolean", description: "Capture full page (default: false)" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -160,7 +162,7 @@ export function getTools() {
                     state: { type: "string", enum: ["visible", "hidden", "attached", "detached"], description: "Element state to wait for" },
                     timeout: { type: "number", description: "Timeout in ms (default: 10000)" }
                 },
-                required: ["selector"]
+                required: ["sessionId", "selector"]
             }
         },
         {
@@ -170,7 +172,8 @@ export function getTools() {
                 type: "object",
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -180,7 +183,8 @@ export function getTools() {
                 type: "object",
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -191,7 +195,8 @@ export function getTools() {
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" },
                     waitUntil: { type: "string", enum: ["load", "domcontentloaded", "networkidle"], description: "When to consider navigation complete" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -201,7 +206,8 @@ export function getTools() {
                 type: "object",
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -211,7 +217,8 @@ export function getTools() {
                 type: "object",
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -234,7 +241,7 @@ export function getTools() {
                     sessionId: { type: "string", description: "Session ID from open_browser" },
                     selector: { type: "string", description: "CSS selector" }
                 },
-                required: ["selector"]
+                required: ["sessionId", "selector"]
             }
         },
         {
@@ -247,7 +254,7 @@ export function getTools() {
                     width: { type: "number", description: "Viewport width" },
                     height: { type: "number", description: "Viewport height" }
                 },
-                required: ["width", "height"]
+                required: ["sessionId", "width", "height"]
             }
         },
         {
@@ -257,7 +264,8 @@ export function getTools() {
                 type: "object",
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -267,7 +275,8 @@ export function getTools() {
                 type: "object",
                 properties: {
                     sessionId: { type: "string", description: "Session ID from open_browser" }
-                }
+                },
+                required: ["sessionId"]
             }
         },
         {
@@ -290,7 +299,7 @@ export function getTools() {
                         }
                     }
                 },
-                required: ["cookies"]
+                required: ["sessionId", "cookies"]
             }
         },
         {

@@ -3,34 +3,86 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <title>Codebase Context Docs</title>
-
-  <meta name="description" content="Generate structured, AI-ready codebase snapshots using CLI." />
-
+  <title>Local MCP Memory Server Docs</title>
+  <meta name="description" content="Production-ready documentation for Local MCP Memory Server." />
+  <meta name="keywords" content="MCP, Model Context Protocol, MongoDB, Node.js, agent coordination, persistent memory, GitHub Pages" />
+  <meta property="og:title" content="Local MCP Memory Server Docs" />
+  <meta property="og:description" content="Production-ready documentation for Local MCP Memory Server." />
+  <meta property="og:url" content="https://coderooz.github.io/Local-MCP-Memory-Server/" />
+  <meta name="twitter:title" content="Local MCP Memory Server Docs" />
+  <meta name="twitter:description" content="Production-ready documentation for Local MCP Memory Server." />
   <link rel="stylesheet" href="./styles.css" />
   <script defer src="./app.js"></script>
 </head>
-
 <body>
   <header class="topbar">
-    <div>
-      <h1>Codebase Context</h1>
-      <span class="tag">CLI Documentation</span>
-    </div>
+    <a class="brand" href="./index.html">
+      <span class="brand-mark">LM</span>
+      <span class="brand-copy">
+        <strong>Local MCP Memory Server</strong>
+        <span id="brand-tagline">Documentation</span>
+      </span>
+    </a>
 
-    <div class="meta">
-      <a href="https://github.com/coderooz/codebase-context" target="_blank">GitHub</a>
+    <div class="topbar-actions">
+      <div class="language-picker" hidden>
+        <span>Language</span>
+        <select aria-label="Language picker">
+          <option>English</option>
+        </select>
+      </div>
+      <a class="github-link" href="https://github.com/coderooz/Local-MCP-Memory-Server" target="_blank" rel="noreferrer">GitHub</a>
     </div>
   </header>
 
-  <main class="layout">
-    <aside id="sidebar"></aside>
-    <section id="content"></section>
+  <main class="page-shell">
+    <section class="hero-card" id="hero"></section>
+
+    <div class="content-shell">
+      <aside class="sidebar">
+        <section class="sidebar-card">
+          <p class="sidebar-eyebrow" id="sidebar-heading">On This Page</p>
+          <nav class="toc" id="toc"></nav>
+        </section>
+        <section class="sidebar-card" id="quick-facts"></section>
+      </aside>
+
+      <section class="doc-stack" id="content">
+        <section class="doc-section" id="overview"></section>
+        <section class="doc-section" id="collaboration"></section>
+        <section class="doc-section" id="quickstart"></section>
+        <section class="doc-section" id="setup"></section>
+        <section class="doc-section" id="integration"></section>
+        <section class="doc-section" id="tools"></section>
+        <section class="doc-section" id="api"></section>
+        <section class="doc-section" id="identity"></section>
+        <section class="doc-section" id="examples"></section>
+        <section class="doc-section" id="architecture"></section>
+        <section class="doc-section" id="troubleshooting"></section>
+        <section class="doc-section" id="faq"></section>
+        <section class="doc-section" id="publish"></section>
+      </section>
+    </div>
   </main>
 
-  <footer>
-    <p>© Coderooz — MIT License</p>
+  <footer class="site-footer" id="footer">
+    <p>Local MCP Memory Server documentation</p>
   </footer>
+
+  <script id="software-schema" type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Local MCP Memory Server",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Cross-platform",
+      "softwareVersion": "Current release",
+      "url": "https://coderooz.github.io/Local-MCP-Memory-Server/"
+    }
+  </script>
+
+  <noscript>
+    <div class="noscript-banner">This documentation requires JavaScript to render the full content.</div>
+  </noscript>
 </body>
 </html>

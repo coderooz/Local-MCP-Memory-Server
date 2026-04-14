@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { chromium } from "playwright";
 import { v4 as uuidv4 } from "uuid";
 
@@ -5,9 +7,16 @@ const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
 const DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const DEFAULT_TIMEOUT = 30000;
 const IDLE_TIMEOUT_MS = 300000;
+const MAX_SESSION_ID_LENGTH = 128;
+const VALID_WAIT_UNTIL = new Set(["load", "domcontentloaded", "networkidle"]);
+const VALID_CONTENT_FORMATS = new Set(["text", "html"]);
+const VALID_SELECTOR_STATES = new Set(["visible", "hidden", "attached", "detached"]);
 
 const sessions = new Map();
 const sessionLifecycles = new Map();
+const sessionInitializations = new Map();
+let sharedBrowser = null;
+let sharedBrowserLaunch = null;
 
 function createStructuredResponse(success, data = null, error = null, meta = {}) {
     return {
@@ -35,44 +44,159 @@ function isValidSelector(selector) {
 
 function isValidScript(script) {
     if (!script || typeof script !== "string") return false;
-    const dangerous = ["window.__proto__", "constructor.prototype", "eval("];
-    return !dangerous.some(d => script.includes(d));
+    const normalized = script.toLowerCase().replace(/\s+/g, "");
+    const dangerous = [
+        "__proto__",
+        "constructor.prototype",
+        'constructor"]["prototype',
+        "constructor']['prototype",
+        "eval("
+    ];
+    return !dangerous.some(d => normalized.includes(d));
+}
+
+function getProjectRoot() {
+    return path.resolve(process.env.MCP_PROJECT_ROOT || process.cwd());
+}
+
+function validateSessionId(sessionId, { required = true } = {}) {
+    if (sessionId === undefined || sessionId === null || sessionId === "") {
+        return required ? "sessionId is required" : null;
+    }
+    if (typeof sessionId !== "string") {
+        return "sessionId must be a string";
+    }
+    if (sessionId.length > MAX_SESSION_ID_LENGTH) {
+        return `sessionId must be ${MAX_SESSION_ID_LENGTH} characters or fewer`;
+    }
+    return null;
+}
+
+function isValidWaitUntil(waitUntil) {
+    return VALID_WAIT_UNTIL.has(waitUntil);
+}
+
+function isValidContentFormat(format) {
+    return VALID_CONTENT_FORMATS.has(format);
+}
+
+function isValidSelectorState(state) {
+    return VALID_SELECTOR_STATES.has(state);
+}
+
+function isSafeScreenshotPath(filePath) {
+    if (!filePath || typeof filePath !== "string" || filePath.trim() === "") {
+        return false;
+    }
+    const projectRoot = getProjectRoot();
+    const resolvedPath = path.resolve(projectRoot, filePath);
+    const relativePath = path.relative(projectRoot, resolvedPath);
+    return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+}
+
+function isValidCookie(cookie) {
+    if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) return false;
+    if (typeof cookie.name !== "string" || cookie.name.trim() === "") return false;
+    if (typeof cookie.value !== "string") return false;
+    if (cookie.url !== undefined) return isValidUrl(cookie.url);
+    return typeof cookie.domain === "string" && cookie.domain.trim() !== "" && (cookie.path === undefined || typeof cookie.path === "string");
+}
+
+function touchSession(sessionId) {
+    if (sessionLifecycles.has(sessionId)) {
+        clearTimeout(sessionLifecycles.get(sessionId));
+    }
+    sessionLifecycles.set(sessionId, setTimeout(() => {
+        closeSession(sessionId);
+    }, IDLE_TIMEOUT_MS));
+}
+
+function getSession(sessionId) {
+    const sessionIdError = validateSessionId(sessionId);
+    if (sessionIdError) {
+        return { error: sessionIdError };
+    }
+    if (!sessions.has(sessionId)) {
+        return { error: "No active session" };
+    }
+    touchSession(sessionId);
+    return { session: sessions.get(sessionId) };
+}
+
+async function getSharedBrowser() {
+    if (sharedBrowser) {
+        return sharedBrowser;
+    }
+
+    if (!sharedBrowserLaunch) {
+        sharedBrowserLaunch = chromium.launch({ headless: true })
+            .then(browser => {
+                sharedBrowser = browser;
+                return browser;
+            })
+            .catch(error => {
+                sharedBrowser = null;
+                throw error;
+            })
+            .finally(() => {
+                sharedBrowserLaunch = null;
+            });
+    }
+
+    return sharedBrowserLaunch;
+}
+
+async function closeSharedBrowserIfIdle() {
+    if (sessions.size > 0 || sessionInitializations.size > 0 || !sharedBrowser) {
+        return;
+    }
+
+    const browser = sharedBrowser;
+    sharedBrowser = null;
+    await browser.close().catch(() => {});
 }
 
 async function getOrCreateSession(sessionId) {
-    if (!sessions.has(sessionId)) {
-        const browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
-            viewport: DEFAULT_VIEWPORT,
-            userAgent: DEFAULT_USER_AGENT
-        });
-        const page = await context.newPage();
-        
-        sessions.set(sessionId, { browser, context, page, createdAt: Date.now() });
-        
-        sessionLifecycles.set(sessionId, setTimeout(() => {
-            closeSession(sessionId);
-        }, IDLE_TIMEOUT_MS));
+    if (sessions.has(sessionId)) {
+        touchSession(sessionId);
+        return sessions.get(sessionId);
     }
-    
-    const session = sessions.get(sessionId);
-    if (sessionLifecycles.has(sessionId)) {
-        clearTimeout(sessionLifecycles.get(sessionId));
-        sessionLifecycles.set(sessionId, setTimeout(() => {
-            closeSession(sessionId);
-        }, IDLE_TIMEOUT_MS));
+
+    if (!sessionInitializations.has(sessionId)) {
+        const initialization = (async () => {
+            const browser = await getSharedBrowser();
+            const context = await browser.newContext({
+                viewport: DEFAULT_VIEWPORT,
+                userAgent: DEFAULT_USER_AGENT
+            });
+            const page = await context.newPage();
+            sessions.set(sessionId, { context, page, createdAt: Date.now() });
+            touchSession(sessionId);
+            return sessions.get(sessionId);
+        })();
+
+        sessionInitializations.set(sessionId, initialization);
     }
-    
-    return session;
+
+    try {
+        return await sessionInitializations.get(sessionId);
+    } finally {
+        sessionInitializations.delete(sessionId);
+    }
 }
 
 async function closeSession(sessionId) {
+    const pendingSession = sessionInitializations.get(sessionId);
+    if (pendingSession) {
+        try {
+            await pendingSession;
+        } catch { }
+    }
     const session = sessions.get(sessionId);
     if (session) {
         try {
             if (session.page) await session.page.close().catch(() => {});
             if (session.context) await session.context.close().catch(() => {});
-            if (session.browser) await session.browser.close().catch(() => {});
         } catch { }
         sessions.delete(sessionId);
     }
@@ -80,11 +204,16 @@ async function closeSession(sessionId) {
         clearTimeout(sessionLifecycles.get(sessionId));
         sessionLifecycles.delete(sessionId);
     }
+    await closeSharedBrowserIfIdle();
 }
 
 export async function openBrowser({ sessionId = uuidv4() } = {}) {
     try {
-        const session = await getOrCreateSession(sessionId);
+        const sessionIdError = validateSessionId(sessionId);
+        if (sessionIdError) {
+            return createStructuredResponse(false, null, sessionIdError);
+        }
+        await getOrCreateSession(sessionId);
         return createStructuredResponse(true, { sessionId, message: "Browser initialized" });
     } catch (error) {
         return createStructuredResponse(false, null, error.message);
@@ -94,19 +223,27 @@ export async function openBrowser({ sessionId = uuidv4() } = {}) {
 export async function closeBrowser({ sessionId } = {}) {
     try {
         if (sessionId) {
+            const sessionIdError = validateSessionId(sessionId);
+            if (sessionIdError) {
+                return createStructuredResponse(false, null, sessionIdError);
+            }
+            if (!sessions.has(sessionId) && !sessionInitializations.has(sessionId)) {
+                return createStructuredResponse(false, null, "No active session");
+            }
             await closeSession(sessionId);
             return createStructuredResponse(true, { sessionId, message: "Session closed" });
         }
         for (const id of sessions.keys()) {
             await closeSession(id);
         }
+        await closeSharedBrowserIfIdle();
         return createStructuredResponse(true, { message: "All sessions closed" });
     } catch (error) {
         return createStructuredResponse(false, null, error.message);
     }
 }
 
-export async function navigateToUrl({ sessionId = uuidv4(), url, waitUntil = "load" }) {
+export async function navigateToUrl({ sessionId, url, waitUntil = "load" }) {
     try {
         if (!url) {
             return createStructuredResponse(false, null, "URL is required");
@@ -114,8 +251,14 @@ export async function navigateToUrl({ sessionId = uuidv4(), url, waitUntil = "lo
         if (!isValidUrl(url)) {
             return createStructuredResponse(false, null, `Invalid URL: ${url}`);
         }
-        
-        const session = await getOrCreateSession(sessionId);
+        if (!isValidWaitUntil(waitUntil)) {
+            return createStructuredResponse(false, null, `Invalid waitUntil value: ${waitUntil}`);
+        }
+
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
+        }
         const response = await session.page.goto(url, { 
             waitUntil, 
             timeout: DEFAULT_TIMEOUT 
@@ -142,10 +285,13 @@ export async function navigateToUrl({ sessionId = uuidv4(), url, waitUntil = "lo
 
 export async function getPageContent({ sessionId, format = "text" }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        if (!isValidContentFormat(format)) {
+            return createStructuredResponse(false, null, `Invalid format: ${format}`);
         }
-        const session = sessions.get(sessionId);
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
+        }
         let content;
         if (format === "html") {
             content = await session.page.content();
@@ -163,10 +309,13 @@ export async function clickElement({ sessionId, selector, timeout = 5000 }) {
         if (!isValidSelector(selector)) {
             return createStructuredResponse(false, null, `Invalid selector: ${selector}`);
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        if (!Number.isFinite(timeout) || timeout < 0 || timeout > DEFAULT_TIMEOUT) {
+            return createStructuredResponse(false, null, `timeout must be between 0 and ${DEFAULT_TIMEOUT}`);
         }
-        const session = sessions.get(sessionId);
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
+        }
         await session.page.click(selector, { timeout });
         return createStructuredResponse(true, { selector });
     } catch (error) {
@@ -182,12 +331,16 @@ export async function fillInput({ sessionId, selector, value, clear = true }) {
         if (value === undefined || value === null) {
             return createStructuredResponse(false, null, "Value is required");
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
-        if (clear) await session.page.fill(selector, "");
-        await session.page.fill(selector, String(value));
+        if (clear) {
+            await session.page.fill(selector, String(value));
+        } else {
+            const existingValue = await session.page.inputValue(selector);
+            await session.page.fill(selector, `${existingValue}${String(value)}`);
+        }
         return createStructuredResponse(true, { selector, value: String(value) });
     } catch (error) {
         return createStructuredResponse(false, null, error.message);
@@ -199,10 +352,10 @@ export async function getElementText({ sessionId, selector }) {
         if (!isValidSelector(selector)) {
             return createStructuredResponse(false, null, `Invalid selector: ${selector}`);
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         const text = await session.page.textContent(selector).catch(() => null);
         if (text === null) {
             return createStructuredResponse(false, null, `Element not found: ${selector}`);
@@ -221,10 +374,10 @@ export async function evaluateJavaScript({ sessionId, script }) {
         if (!isValidScript(script)) {
             return createStructuredResponse(false, null, "Script contains potentially dangerous patterns");
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         const result = await session.page.evaluate(script).catch(err => {
             return createStructuredResponse(false, null, `Script execution failed: ${err.message}`);
         });
@@ -237,10 +390,13 @@ export async function evaluateJavaScript({ sessionId, script }) {
 
 export async function takeScreenshot({ sessionId, path, fullPage = false }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
+        if (path && !isSafeScreenshotPath(path)) {
+            return createStructuredResponse(false, null, "Screenshot path must stay within the project root");
+        }
         const options = { fullPage };
         if (path) options.path = path;
         const buffer = await session.page.screenshot(options);
@@ -259,10 +415,16 @@ export async function waitForSelector({ sessionId, selector, state = "visible", 
         if (!isValidSelector(selector)) {
             return createStructuredResponse(false, null, `Invalid selector: ${selector}`);
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        if (!isValidSelectorState(state)) {
+            return createStructuredResponse(false, null, `Invalid selector state: ${state}`);
         }
-        const session = sessions.get(sessionId);
+        if (!Number.isFinite(timeout) || timeout < 0 || timeout > DEFAULT_TIMEOUT) {
+            return createStructuredResponse(false, null, `timeout must be between 0 and ${DEFAULT_TIMEOUT}`);
+        }
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
+        }
         await session.page.waitForSelector(selector, { state, timeout });
         return createStructuredResponse(true, { selector, state });
     } catch (error) {
@@ -272,10 +434,10 @@ export async function waitForSelector({ sessionId, selector, state = "visible", 
 
 export async function getPageTitle({ sessionId }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         const title = await session.page.title();
         return createStructuredResponse(true, { title });
     } catch (error) {
@@ -285,10 +447,10 @@ export async function getPageTitle({ sessionId }) {
 
 export async function getCurrentUrl({ sessionId }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         return createStructuredResponse(true, { url: session.page.url() });
     } catch (error) {
         return createStructuredResponse(false, null, error.message);
@@ -297,10 +459,13 @@ export async function getCurrentUrl({ sessionId }) {
 
 export async function reloadPage({ sessionId, waitUntil = "load" }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        if (!isValidWaitUntil(waitUntil)) {
+            return createStructuredResponse(false, null, `Invalid waitUntil value: ${waitUntil}`);
         }
-        const session = sessions.get(sessionId);
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
+        }
         await session.page.reload({ waitUntil });
         return createStructuredResponse(true, { 
             url: session.page.url(), 
@@ -313,10 +478,10 @@ export async function reloadPage({ sessionId, waitUntil = "load" }) {
 
 export async function goBack({ sessionId }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         await session.page.goBack();
         return createStructuredResponse(true, { 
             url: session.page.url(), 
@@ -329,10 +494,10 @@ export async function goBack({ sessionId }) {
 
 export async function goForward({ sessionId }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         await session.page.goForward();
         return createStructuredResponse(true, { 
             url: session.page.url(), 
@@ -360,19 +525,18 @@ export async function getElements({ sessionId, selector }) {
         if (!isValidSelector(selector)) {
             return createStructuredResponse(false, null, `Invalid selector: ${selector}`);
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
-        const elements = await session.page.$$(selector);
-        const results = await Promise.all(
-            elements.slice(0, 100).map(async (el, i) => {
-                const text = await el.textContent().catch(() => "");
-                const tag = await el.evaluate(e => e.tagName).catch(() => "");
-                const id = await el.evaluate(e => e.id || "").catch(() => "");
-                const classes = await el.evaluate(e => e.className || "").catch(() => "");
-                return { index: i, tag, id, classes, text: text?.trim() };
-            })
+        const results = await session.page.$$eval(selector, nodes =>
+            nodes.slice(0, 100).map((node, index) => ({
+                index,
+                tag: node.tagName || "",
+                id: node.id || "",
+                classes: node.className || "",
+                text: node.textContent?.trim() || ""
+            }))
         );
         return createStructuredResponse(true, { elements: results, count: results.length });
     } catch (error) {
@@ -382,16 +546,16 @@ export async function getElements({ sessionId, selector }) {
 
 export async function setViewport({ sessionId, width, height }) {
     try {
-        if (typeof width !== "number" || typeof height !== "number") {
+        if (!Number.isFinite(width) || !Number.isFinite(height)) {
             return createStructuredResponse(false, null, "width and height must be numbers");
         }
         if (width < 1 || height < 1) {
             return createStructuredResponse(false, null, "Viewport dimensions must be positive");
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         await session.page.setViewportSize({ width, height });
         return createStructuredResponse(true, { width, height });
     } catch (error) {
@@ -401,10 +565,10 @@ export async function setViewport({ sessionId, width, height }) {
 
 export async function clearCookies({ sessionId }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         await session.context.clearCookies();
         return createStructuredResponse(true);
     } catch (error) {
@@ -414,10 +578,10 @@ export async function clearCookies({ sessionId }) {
 
 export async function getCookies({ sessionId }) {
     try {
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
         }
-        const session = sessions.get(sessionId);
         const cookies = await session.context.cookies();
         return createStructuredResponse(true, { cookies, count: cookies.length });
     } catch (error) {
@@ -430,10 +594,13 @@ export async function setCookies({ sessionId, cookies }) {
         if (!Array.isArray(cookies)) {
             return createStructuredResponse(false, null, "cookies must be an array");
         }
-        if (!sessions.has(sessionId)) {
-            return createStructuredResponse(false, null, "No active session");
+        if (!cookies.every(isValidCookie)) {
+            return createStructuredResponse(false, null, "Each cookie must include name, value, and either url or domain");
         }
-        const session = sessions.get(sessionId);
+        const { session, error } = getSession(sessionId);
+        if (error) {
+            return createStructuredResponse(false, null, error);
+        }
         await session.context.addCookies(cookies);
         return createStructuredResponse(true, { count: cookies.length });
     } catch (error) {

@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*'   # only trigger on semantic tags
 
 permissions:
   contents: write
@@ -19,11 +19,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: "Release v${{ github.run_number }}"
-          body: |
-            Automated release.
-
-            Please refer to CHANGELOG.md for details.
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -145,6 +145,71 @@ function respondError(id, code, message) {
   );
 }
 
+function unwrapBrowserToolData(result) {
+  if (!result || typeof result !== "object") {
+    throw new Error("Browser tool returned an invalid response");
+  }
+  if (!result.success) {
+    throw new Error(result.error || "Browser tool failed");
+  }
+  return result.data || {};
+}
+
+const BROWSER_TOOL_NAMES = new Set([
+  "open_browser",
+  "close_browser",
+  "navigate_to_url",
+  "get_page_content",
+  "click_element",
+  "fill_input",
+  "get_element_text",
+  "evaluate_javascript",
+  "take_screenshot",
+  "wait_for_selector",
+  "get_page_title",
+  "get_current_url",
+  "reload_page",
+  "go_back",
+  "go_forward",
+  "get_elements",
+  "set_viewport",
+  "clear_cookies",
+  "get_cookies",
+  "set_cookies"
+]);
+
+const browserRequestQueues = new Map();
+
+function getRequestQueueKey(request) {
+  if (request?.method !== "tools/call") {
+    return null;
+  }
+
+  const { name, arguments: args = {} } = request.params || {};
+  if (!BROWSER_TOOL_NAMES.has(name)) {
+    return null;
+  }
+
+  if (name === "close_browser" && !args.sessionId) {
+    return "__browser_global__";
+  }
+
+  return args.sessionId ? `browser:${args.sessionId}` : "__browser_global__";
+}
+
+function enqueueBrowserRequest(queueKey, task) {
+  const previous = browserRequestQueues.get(queueKey) || Promise.resolve();
+  const next = previous.catch(() => {}).then(task);
+
+  browserRequestQueues.set(queueKey, next);
+
+  return next.finally(() => {
+    if (browserRequestQueues.get(queueKey) === next) {
+      browserRequestQueues.delete(queueKey);
+    }
+  });
+}
+
 function getTools() {
   return [
     {
@@ -845,10 +910,11 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           url: { type: "string", description: "The URL to navigate to" },
           waitUntil: { type: "string", description: "When to consider navigation complete (load, domcontentloaded, networkidle)" }
         },
-        required: ["url"]
+        required: ["sessionId", "url"]
       }
     },
     {
@@ -857,8 +923,10 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           format: { type: "string", enum: ["text", "html"], description: "Output format" }
-        }
+        },
+        required: ["sessionId"]
       }
     },
     {
@@ -867,10 +935,11 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           selector: { type: "string", description: "CSS selector for the element" },
           timeout: { type: "number", description: "Timeout in milliseconds" }
         },
-        required: ["selector"]
+        required: ["sessionId", "selector"]
       }
     },
     {
@@ -879,11 +948,12 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           selector: { type: "string", description: "CSS selector for the input" },
           value: { type: "string", description: "Value to fill" },
           clear: { type: "boolean", description: "Clear before filling" }
         },
-        required: ["selector", "value"]
+        required: ["sessionId", "selector", "value"]
       }
     },
     {
@@ -892,9 +962,10 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           selector: { type: "string", description: "CSS selector" }
         },
-        required: ["selector"]
+        required: ["sessionId", "selector"]
       }
     },
     {
@@ -903,9 +974,10 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           script: { type: "string", description: "JavaScript code to execute" }
         },
-        required: ["script"]
+        required: ["sessionId", "script"]
       }
     },
     {
@@ -914,8 +986,11 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
+          path: { type: "string", description: "Optional file path to save screenshot" },
           fullPage: { type: "boolean", description: "Capture full page" }
-        }
+        },
+        required: ["sessionId"]
       }
     },
     {
@@ -924,22 +999,35 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           selector: { type: "string", description: "CSS selector" },
           state: { type: "string", enum: ["visible", "hidden", "attached", "detached"] },
           timeout: { type: "number", description: "Timeout in ms" }
         },
-        required: ["selector"]
+        required: ["sessionId", "selector"]
       }
     },
     {
       name: "get_page_title",
       description: "Get the current page title.",
-      inputSchema: { type: "object", properties: {} }
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" }
+        },
+        required: ["sessionId"]
+      }
     },
     {
       name: "get_current_url",
       description: "Get the current page URL.",
-      inputSchema: { type: "object", properties: {} }
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" }
+        },
+        required: ["sessionId"]
+      }
     },
     {
       name: "reload_page",
@@ -947,19 +1035,33 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           waitUntil: { type: "string", description: "When to consider navigation complete" }
-        }
+        },
+        required: ["sessionId"]
       }
     },
     {
       name: "go_back",
       description: "Navigate back in browser history.",
-      inputSchema: { type: "object", properties: {} }
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" }
+        },
+        required: ["sessionId"]
+      }
     },
     {
       name: "go_forward",
       description: "Navigate forward in browser history.",
-      inputSchema: { type: "object", properties: {} }
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" }
+        },
+        required: ["sessionId"]
+      }
     },
     {
       name: "wait_for_timeout",
@@ -978,9 +1080,10 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           selector: { type: "string", description: "CSS selector" }
         },
-        required: ["selector"]
+        required: ["sessionId", "selector"]
       }
     },
     {
@@ -989,21 +1092,34 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           width: { type: "number", description: "Viewport width" },
           height: { type: "number", description: "Viewport height" }
         },
-        required: ["width", "height"]
+        required: ["sessionId", "width", "height"]
       }
     },
     {
       name: "clear_cookies",
       description: "Clear all browser cookies.",
-      inputSchema: { type: "object", properties: {} }
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" }
+        },
+        required: ["sessionId"]
+      }
     },
     {
       name: "get_cookies",
       description: "Get all browser cookies.",
-      inputSchema: { type: "object", properties: {} }
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" }
+        },
+        required: ["sessionId"]
+      }
     },
     {
       name: "set_cookies",
@@ -1011,6 +1127,7 @@ function getTools() {
       inputSchema: {
         type: "object",
         properties: {
+          sessionId: { type: "string", description: "Session ID from open_browser" },
           cookies: {
             type: "array",
             items: {
@@ -1024,49 +1141,57 @@ function getTools() {
             }
           }
         },
-        required: ["cookies"]
+        required: ["sessionId", "cookies"]
       }
     }
   ];
 }
 
-rl.on("line", async (line) => {
+rl.on("line", (line) => {
+  let request;
+
   try {
-    const request = JSON.parse(line);
+    request = JSON.parse(line);
+  } catch (error) {
+    void logMCPError(error, { rawInput: line });
+    return;
+  }
 
-    if (request.method === "initialize") {
-      await memoryServerReady;
+  const run = async () => {
+    try {
+      if (request.method === "initialize") {
+        await memoryServerReady;
 
-      return respond(request.id, {
-        protocolVersion: "2024-11-05",
-        capabilities: {
-          tools: {
-            listChanged: false
-          }
-        },
-        serverInfo: {
-          name: "mcp-memory-server",
-          version: "2.3.0",
-          description: "Persistent multi-agent memory system for AI agents",
-          author: "Ranit Saha (Coderooz)"
-        },
-        instructions: GLOBAL_AGENT_INSTRUCTION,
-        
-      });
-    }
+        return respond(request.id, {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            tools: {
+              listChanged: false
+            }
+          },
+          serverInfo: {
+            name: "mcp-memory-server",
+            version: "2.3.0",
+            description: "Persistent multi-agent memory system for AI agents",
+            author: "Ranit Saha (Coderooz)"
+          },
+          instructions: GLOBAL_AGENT_INSTRUCTION,
+          
+        });
+      }
 
-    if (request.method === "ping") {
-      return respond(request.id, {});
-    }
+      if (request.method === "ping") {
+        return respond(request.id, {});
+      }
 
-    if (request.method === "tools/list") {
-      return respond(request.id, {
-        tools: getTools()
-      });
-    }
+      if (request.method === "tools/list") {
+        return respond(request.id, {
+          tools: getTools()
+        });
+      }
 
-    if (request.method === "tools/call") {
-      const { name, arguments: args = {} } = request.params || {};
+      if (request.method === "tools/call") {
+        const { name, arguments: args = {} } = request.params || {};
 
       if (name === "list_agents") {
         const data = await callMemoryApi("/agent/list");
@@ -1726,147 +1851,238 @@ rl.on("line", async (line) => {
       }
 
       if (name === "open_browser") {
-        const data = await browserTools.openBrowser();
+        const data = unwrapBrowserToolData(
+          await browserTools.openBrowser({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
-          content: [{ type: "text", text: data.message }]
+          content: [
+            {
+              type: "text",
+              text: `${data.message}\nSession ID: ${data.sessionId}`
+            }
+          ]
         });
       }
 
       if (name === "close_browser") {
-        const data = await browserTools.closeBrowser();
+        const data = unwrapBrowserToolData(
+          await browserTools.closeBrowser({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: data.message }]
         });
       }
 
       if (name === "navigate_to_url") {
-        const data = await browserTools.navigateToUrl({ url: args.url, waitUntil: args.waitUntil });
+        const data = unwrapBrowserToolData(
+          await browserTools.navigateToUrl({
+            sessionId: args.sessionId,
+            url: args.url,
+            waitUntil: args.waitUntil
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Navigated to: ${data.url}\nTitle: ${data.title}\nStatus: ${data.status}` }]
         });
       }
 
       if (name === "get_page_content") {
-        const data = await browserTools.getPageContent({ format: args.format || "text" });
+        const data = unwrapBrowserToolData(
+          await browserTools.getPageContent({
+            sessionId: args.sessionId,
+            format: args.format || "text"
+          })
+        );
         return respond(request.id, {
-          content: [{ type: "text", text: data.substring(0, 10000) }]
+          content: [{ type: "text", text: (data.content || "").substring(0, 10000) }]
         });
       }
 
       if (name === "click_element") {
-        const data = await browserTools.clickElement({ selector: args.selector, timeout: args.timeout });
+        const data = unwrapBrowserToolData(
+          await browserTools.clickElement({
+            sessionId: args.sessionId,
+            selector: args.selector,
+            timeout: args.timeout
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Clicked: ${data.selector}` }]
         });
       }
 
       if (name === "fill_input") {
-        const data = await browserTools.fillInput({ selector: args.selector, value: args.value, clear: args.clear });
+        const data = unwrapBrowserToolData(
+          await browserTools.fillInput({
+            sessionId: args.sessionId,
+            selector: args.selector,
+            value: args.value,
+            clear: args.clear
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Filled ${data.selector} with: ${data.value}` }]
         });
       }
 
       if (name === "get_element_text") {
-        const data = await browserTools.getElementText({ selector: args.selector });
+        const data = unwrapBrowserToolData(
+          await browserTools.getElementText({
+            sessionId: args.sessionId,
+            selector: args.selector
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: data.text || "" }]
         });
       }
 
       if (name === "evaluate_javascript") {
-        const data = await browserTools.evaluateJavaScript({ script: args.script });
+        const data = unwrapBrowserToolData(
+          await browserTools.evaluateJavaScript({
+            sessionId: args.sessionId,
+            script: args.script
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: JSON.stringify(data.result, null, 2) }]
         });
       }
 
       if (name === "take_screenshot") {
-        const data = await browserTools.takeScreenshot({ fullPage: args.fullPage });
+        const data = unwrapBrowserToolData(
+          await browserTools.takeScreenshot({
+            sessionId: args.sessionId,
+            path: args.path,
+            fullPage: args.fullPage
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Screenshot taken (${data.screenshot.length} bytes, base64)` }]
         });
       }
 
       if (name === "wait_for_selector") {
-        const data = await browserTools.waitForSelector({ selector: args.selector, state: args.state, timeout: args.timeout });
+        const data = unwrapBrowserToolData(
+          await browserTools.waitForSelector({
+            sessionId: args.sessionId,
+            selector: args.selector,
+            state: args.state,
+            timeout: args.timeout
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Selector ${data.selector} is ${data.state}` }]
         });
       }
 
       if (name === "get_page_title") {
-        const data = await browserTools.getPageTitle();
+        const data = unwrapBrowserToolData(
+          await browserTools.getPageTitle({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: data.title }]
         });
       }
 
       if (name === "get_current_url") {
-        const data = await browserTools.getCurrentUrl();
+        const data = unwrapBrowserToolData(
+          await browserTools.getCurrentUrl({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: data.url }]
         });
       }
 
       if (name === "reload_page") {
-        const data = await browserTools.reloadPage({ waitUntil: args.waitUntil });
+        const data = unwrapBrowserToolData(
+          await browserTools.reloadPage({
+            sessionId: args.sessionId,
+            waitUntil: args.waitUntil
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Reloaded: ${data.url}\nTitle: ${data.title}` }]
         });
       }
 
       if (name === "go_back") {
-        const data = await browserTools.goBack();
+        const data = unwrapBrowserToolData(
+          await browserTools.goBack({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Back to: ${data.url}\nTitle: ${data.title}` }]
         });
       }
 
       if (name === "go_forward") {
-        const data = await browserTools.goForward();
+        const data = unwrapBrowserToolData(
+          await browserTools.goForward({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Forward to: ${data.url}\nTitle: ${data.title}` }]
         });
       }
 
       if (name === "wait_for_timeout") {
-        const data = await browserTools.waitForTimeout({ ms: args.ms });
+        const data = unwrapBrowserToolData(
+          await browserTools.waitForTimeout({ ms: args.ms })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Waited ${data.waited}ms` }]
         });
       }
 
       if (name === "get_elements") {
-        const data = await browserTools.getElements({ selector: args.selector });
+        const data = unwrapBrowserToolData(
+          await browserTools.getElements({
+            sessionId: args.sessionId,
+            selector: args.selector
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: JSON.stringify(data.elements, null, 2) }]
         });
       }
 
       if (name === "set_viewport") {
-        const data = await browserTools.setViewport({ width: args.width, height: args.height });
+        const data = unwrapBrowserToolData(
+          await browserTools.setViewport({
+            sessionId: args.sessionId,
+            width: args.width,
+            height: args.height
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Viewport set to ${data.width}x${data.height}` }]
         });
       }
 
       if (name === "clear_cookies") {
-        const data = await browserTools.clearCookies();
+        unwrapBrowserToolData(
+          await browserTools.clearCookies({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
-          content: [{ type: "text", text: data.success ? "Cookies cleared" : "Failed to clear cookies" }]
+          content: [{ type: "text", text: "Cookies cleared" }]
         });
       }
 
       if (name === "get_cookies") {
-        const data = await browserTools.getCookies();
+        const data = unwrapBrowserToolData(
+          await browserTools.getCookies({ sessionId: args.sessionId })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: JSON.stringify(data.cookies, null, 2) }]
         });
       }
 
       if (name === "set_cookies") {
-        const data = await browserTools.setCookies({ cookies: args.cookies });
+        const data = unwrapBrowserToolData(
+          await browserTools.setCookies({
+            sessionId: args.sessionId,
+            cookies: args.cookies
+          })
+        );
         return respond(request.id, {
           content: [{ type: "text", text: `Set ${data.count} cookies` }]
         });
@@ -1874,15 +2090,20 @@ rl.on("line", async (line) => {
 
       return respondError(request.id, -32601, `Unknown tool: ${name}`);
     }
-  } catch (error) {
-    await logMCPError(error, { rawInput: line });
-
-    try {
-      const request = JSON.parse(line);
+    } catch (error) {
+      await logMCPError(error, { rawInput: line });
 
       if (request && Object.prototype.hasOwnProperty.call(request, "id")) {
         return respondError(request.id, -32603, error.message || "Internal error");
       }
-    } catch {}
+    }
+  };
+
+  const queueKey = getRequestQueueKey(request);
+  if (queueKey) {
+    void enqueueBrowserRequest(queueKey, run);
+    return;
   }
+
+  void run();
 });

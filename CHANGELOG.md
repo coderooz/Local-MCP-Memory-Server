@@ -6,6 +6,45 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.3.0] - Browser Automation Module
+
+### Added
+
+* Added 24 new browser automation MCP tools using Playwright:
+  * Session management: `open_browser`, `close_browser`, `get_active_sessions`
+  * Navigation: `navigate_to_url`, `reload_page`, `go_back`, `go_forward`
+  * DOM interaction: `click_element`, `fill_input`, `get_element_text`, `get_elements`, `wait_for_selector`
+  * Page info: `get_page_title`, `get_current_url`, `get_page_content`
+  * Browser control: `set_viewport`, `clear_cookies`, `get_cookies`, `set_cookies`
+  * Execution: `evaluate_javascript`, `take_screenshot`, `wait_for_timeout`
+* Added `tools/browserTools.js` - Production-ready Playwright implementation featuring:
+  * Shared browser instance pooling for efficiency
+  * Session isolation per agent
+  * 5-minute idle auto-cleanup
+  * Comprehensive input validation (URLs, selectors, scripts)
+  * Security blocking (eval, prototype pollution patterns)
+* Added `tools/index.js` - Tool definitions registry with 26 total MCP tools
+* Added `tests/browser-test.js` - Comprehensive test suite covering:
+  * Basic functional tests (open, navigate, click, fill)
+  * Validation tests (URLs, selectors, scripts, cookies)
+  * Multi-session tests
+  * Failure resilience tests
+* Added `mcp.config.json` - MCP server configuration template for local setup
+
+### Changed
+
+* Updated `instruction.md` and `prompt/instruction.md` - Added browser automation documentation section with tool reference and usage patterns
+* Updated `mcp-server.js` - Integrated browser tool handlers (24 new tools)
+* Updated `docs/index.html` - Simplified to minimal shell structure
+* Updated `.gitignore` - Added `CODEBASE.md` and `result.md`
+* Updated check script - Added syntax validation for `tools/browserTools.js`, `tools/index.js`, `tools/store_context.js`
+
+### Dependencies
+
+* Added `playwright@1.49.1` - Headless browser automation
+
+---
+
 ## [v2.2.1] - Documentation Modularization & Release Readiness
 
 ### Changed

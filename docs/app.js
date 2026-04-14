@@ -99,6 +99,15 @@ const SITE = {
         "Start the API with `npm run start:api`.",
         "Start the MCP transport with `npm start` when you want to test it directly.",
         "Use `mcp-shim.js` for editor integrations so project identity is resolved from the current repository."
+      ],
+      visuals: [
+        [
+          "Basic Navigation",
+          "open-browser.png",
+          "Browser automation navigation flow opened on example.com.",
+          "Shows a real browser session launched by the plugin and navigated to example.com.",
+          "Use it as the first smoke test for browser startup and outbound navigation."
+        ]
       ]
     },
     setup: {
@@ -175,7 +184,36 @@ const SITE = {
           ["fetch_project_map", "Retrieve saved project-map entries."],
           ["fetch_metrics", "Read collaboration and memory metrics."],
           ["get_agent_instructions", "Read the system instruction contract."]
+        ]],
+        ["Browser Automation", [
+          ["open_browser", "Initialize browser session, returns sessionId."],
+          ["close_browser", "Close session or all sessions."],
+          ["navigate_to_url", "Navigate to URL (requires sessionId)."],
+          ["get_page_content", "Get page content as text or HTML."],
+          ["click_element", "Click element by CSS selector."],
+          ["fill_input", "Fill input field with value."],
+          ["get_element_text", "Get text content of element."],
+          ["evaluate_javascript", "Execute JS in page context."],
+          ["take_screenshot", "Capture screenshot (base64 or file)."],
+          ["wait_for_selector", "Wait for element state."],
+          ["get_page_title", "Get page title."],
+          ["get_current_url", "Get current URL."],
+          ["get_elements", "Get all matching elements."],
+          ["set_viewport", "Set viewport size."],
+          ["clear_cookies", "Clear all cookies."],
+          ["get_cookies", "Get all cookies."],
+          ["set_cookies", "Set cookies."],
+          ["get_active_sessions", "List active browser sessions."]
         ]]
+      ],
+      visuals: [
+        [
+          "Script Evaluation",
+          "evaluate-result.png",
+          "JavaScript evaluation result rendered inside the browser documentation fixture.",
+          "Demonstrates a real evaluation flow that reads live DOM state and writes the result back into the page.",
+          "Use it for advanced browser automation where decisions depend on computed page state."
+        ]
       ]
     },
     api: {
@@ -268,8 +306,24 @@ MCP_SERVER_URL=http://localhost:4000`],
       "resource": "project-map:server.js",
       "expiresInMs": 300000
     }
-  }
-}`]
+    }
+  }`]
+      ],
+      visuals: [
+        [
+          "Search Interaction",
+          "search-action.png",
+          "Live input interaction filtering browser automation features in the documentation fixture.",
+          "Shows a real input-driven interaction flow with typed text and updated search results.",
+          "Use it when documenting form entry, live filters, or search-driven workflows."
+        ],
+        [
+          "DOM Interaction",
+          "dom-interaction.png",
+          "DOM interaction screenshot with a clicked control revealing additional UI state.",
+          "Shows a real click action that changes page state and reveals a hidden diagnostic panel.",
+          "Use it when demonstrating selector-based clicks, toggles, and visible state transitions."
+        ]
       ]
     },
     architecture: {
@@ -294,6 +348,15 @@ MCP_SERVER_URL=http://localhost:4000`],
         "If MCP requests fail unexpectedly, keep stdout reserved for JSON-RPC only and send logs elsewhere.",
         "If search quality drops, verify that the text indexes are still being created during startup.",
         "If you see overlap warnings, inspect activity, locks, and current task ownership before forcing shared changes."
+      ],
+      visuals: [
+        [
+          "Error Case",
+          "error-case.png",
+          "Invalid selector failure rendered back into the browser fixture as a troubleshooting example.",
+          "Shows a real failure flow where an invalid selector is caught and surfaced as structured feedback.",
+          "Use it to explain how selector failures should be diagnosed before retrying automation steps."
+        ]
       ]
     },
     faq: {
@@ -488,6 +551,30 @@ function envTable(rows) {
   `;
 }
 
+function docVisuals(items) {
+  if (!items?.length) return "";
+
+  return `
+    <div class="doc-visual-grid">
+      ${items
+        .map(
+          ([featureName, fileName, alt, description, usage]) => `
+            <div class="doc-section doc-visual-card">
+              <h3>Feature: ${escapeHtml(featureName)}</h3>
+              <img src="./assets/${escapeHtml(fileName)}" alt="${escapeHtml(alt)}" loading="lazy" />
+              <p>
+                Description:
+                - ${escapeHtml(description)}<br/>
+                - ${escapeHtml(usage)}
+              </p>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function getQuickFacts() {
   return [["Version", state.version], ...SITE.quickFacts];
 }
@@ -519,7 +606,7 @@ const SECTION_RENDERERS = {
     `;
   },
   collaboration: (section) => `${sectionHeading("collaboration", section.title, section.intro)}${cardGrid(section.cards)}`,
-  quickstart: (section) => `${sectionHeading("quickstart", section.title, section.intro)}${list(section.steps, true)}`,
+  quickstart: (section) => `${sectionHeading("quickstart", section.title, section.intro)}${list(section.steps, true)}${docVisuals(section.visuals)}`,
   setup(section) {
     return `
       ${sectionHeading("setup", section.title, section.intro)}
@@ -542,12 +629,12 @@ const SECTION_RENDERERS = {
     `;
   },
   integration: (section) => `${sectionHeading("integration", section.title, section.intro)}${cardGrid(section.cards)}`,
-  tools: (section) => `${sectionHeading("tools", section.title, section.intro)}<div class="callout">${section.note}</div>${referenceGroups(section.groups)}`,
+  tools: (section) => `${sectionHeading("tools", section.title, section.intro)}<div class="callout">${section.note}</div>${referenceGroups(section.groups)}${docVisuals(section.visuals)}`,
   api: (section) => `${sectionHeading("api", section.title, section.intro)}<div class="callout">${section.note}</div>${referenceGroups(section.groups)}`,
   identity: (section) => `${sectionHeading("identity", section.title, section.intro)}${list(section.bullets)}<div class="callout">${section.callout}</div>`,
-  examples: (section) => `${sectionHeading("examples", section.title, section.intro)}${examples(section.items)}`,
+  examples: (section) => `${sectionHeading("examples", section.title, section.intro)}${examples(section.items)}${docVisuals(section.visuals)}`,
   architecture: (section) => `${sectionHeading("architecture", section.title, section.intro)}${cardGrid(section.cards)}`,
-  troubleshooting: (section) => `${sectionHeading("troubleshooting", section.title, section.intro)}${list(section.bullets)}`,
+  troubleshooting: (section) => `${sectionHeading("troubleshooting", section.title, section.intro)}${list(section.bullets)}${docVisuals(section.visuals)}`,
   faq: (section) => `${sectionHeading("faq", section.title, section.intro)}${faq(section.items)}`,
   publish(section) {
     return `

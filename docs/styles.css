@@ -288,6 +288,7 @@ select {
 .card-grid,
 .reference-grid,
 .example-grid,
+.doc-visual-grid,
 .faq-grid,
 .publish-grid {
   display: grid;
@@ -442,9 +443,38 @@ select {
 .card-grid,
 .reference-grid,
 .example-grid,
+.doc-visual-grid,
 .faq-grid,
 .publish-grid {
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.doc-visual-grid {
+  margin-top: 1.2rem;
+}
+
+.doc-visual-card {
+  padding: 1.1rem;
+}
+
+.doc-visual-card h3 {
+  margin: 0 0 0.8rem;
+  font-size: 1.02rem;
+}
+
+.doc-visual-card img {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.95rem;
+  border-radius: 18px;
+  border: 1px solid rgba(20, 33, 61, 0.12);
+  box-shadow: 0 18px 40px rgba(20, 33, 61, 0.12);
+}
+
+.doc-visual-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
 }
 
 .info-card h3,

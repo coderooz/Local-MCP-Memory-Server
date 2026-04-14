@@ -1,0 +1,57 @@
+name: Auto Tag on Version Change
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-tag:
+    runs-on: ubuntu-latest
+    
+    outputs:
+      should_tag: ${{ steps.version_check.outputs.should_tag }}
+      new_version: ${{ steps.version_check.outputs.new_version }}
+      tag_exists: ${{ steps.version_check.outputs.tag_exists }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version and tag status
+        id: version_check
+        run: |
+          # Get new version from package.json
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+          # Check if tag already exists
+          TAG_NAME="v$NEW_VERSION"
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "tag_exists_for=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "should_tag=false" >> $GITHUB_OUTPUT
+            echo "::notice::Tag $TAG_NAME already exists, skipping"
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "should_tag=true" >> $GITHUB_OUTPUT
+            echo "::notice::Will create tag $TAG_NAME"
+          fi
+
+      - name: Create Tag
+        if: steps.version_check.outputs.should_tag == 'true'
+        run: |
+          TAG_NAME="${{ steps.version_check.outputs.tag_name }}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          git push origin "$TAG_NAME"
+          echo "::notice::Successfully created and pushed tag $TAG_NAME"

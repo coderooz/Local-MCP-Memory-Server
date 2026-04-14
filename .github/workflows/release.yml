@@ -3,8 +3,42 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'   # only trigger on semantic tags
+      - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mode of operation'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - dry-run
+          - force
+          - update
+      tag:
+        description: 'Tag to release (e.g., v1.2.3)'
+        required: false
+        type: string
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      delete_tag:
+        description: 'Delete tag after release (use with caution)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -12,14 +46,207 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine tag
+        id: tag_info
+        run: |
+          echo "=== Tag Determination ==="
+          
+          # Determine which tag to release
+          if [[ "${{ inputs.tag }}" != "" ]]; then
+            TAG_NAME="${{ inputs.tag }}"
+            if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid tag format: $TAG_NAME"
+              echo "Tag must match pattern v*.*.* (e.g., v1.2.3)"
+              exit 1
+            fi
+          elif [[ "${{ github.ref }}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            # Find most recent tag
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null)
+            if [[ -z "$TAG_NAME" ]]; then
+              echo "::error::No tags found and no tag specified"
+              exit 1
+            fi
+          fi
+          
+          # Verify tag exists
+          if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG_NAME does not exist"
+            exit 1
+          fi
+          
+          TAG_COMMIT=$(git rev-parse "$TAG_NAME")
+          TAG_MESSAGE=$(git tag -l "$TAG_NAME" -n99 | head -n1)
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "tag_commit=$TAG_COMMIT" >> $GITHUB_OUTPUT
+          echo "tag_message=$TAG_MESSAGE" >> $GITHUB_OUTPUT
+          echo "is_dry_run=${{ inputs.mode == 'dry-run' }}" >> $GITHUB_OUTPUT
+          echo "is_force=${{ inputs.mode == 'force' }}" >> $GITHUB_OUTPUT
+          echo "is_update=${{ inputs.mode == 'update' }}" >> $GITHUB_OUTPUT
+          
+          echo "::notice::Target release: $TAG_NAME"
+          echo "Tag commit: $TAG_COMMIT"
+          echo "Mode: ${{ inputs.mode }}"
+
+      - name: Check existing release
+        id: existing_release
+        run: |
+          TAG_NAME="${{ steps.tag_info.outputs.tag_name }}"
+          
+          # Check if release exists via API
+          if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "release_exists=true" >> $GITHUB_OUTPUT
+            echo "::notice::Release $TAG_NAME already exists"
+          else
+            echo "release_exists=false" >> $GITHUB_OUTPUT
+            echo "::notice::Release $TAG_NAME does not exist"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dry-run summary
+        if: inputs.mode == 'dry-run'
+        run: |
+          echo ""
+          echo "=== DRY RUN MODE ==="
+          echo "Tag: ${{ steps.tag_info.outputs.tag_name }}"
+          echo "Version: ${${{ steps.tag_info.outputs.tag_name }}#v}"
+          echo "Release exists: ${{ steps.existing_release.outputs.release_exists }}"
+          echo ""
+          echo "What would happen:"
+          if [[ "${{ steps.existing_release.outputs.release_exists }}" == "true" ]]; then
+            echo "  - Skip (release already exists)"
+            echo "  - Use --force to update existing release"
+          else
+            echo "  - Create new release"
+          fi
+          echo ""
+          echo "No changes were made (dry-run mode)"
+
+      - name: Delete existing release
+        if: inputs.mode == 'update' || inputs.mode == 'force'
+        run: |
+          TAG_NAME="${{ steps.tag_info.outputs.tag_name }}"
+          
+          if [[ "${{ steps.existing_release.outputs.release_exists }}" == "true" ]]; then
+            echo "Deleting existing release $TAG_NAME..."
+            gh release delete "$TAG_NAME" --repo "${{ github.repository }}" --yes
+            echo "::notice::Existing release deleted"
+          else
+            echo "No existing release to delete"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG_NAME="${{ steps.tag_info.outputs.tag_name }}"
+          VERSION="${TAG_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Generate changelog for release
+        id: changelog
+        run: |
+          TAG_NAME="${{ steps.tag_info.outputs.tag_name }}"
+          
+          # Get commits since last tag (or all if first release)
+          LAST_TAG=$(git describe --tags --abbrev=0 "$TAG_NAME"^ 2>/dev/null || echo "")
+          
+          if [[ -n "$LAST_TAG" ]]; then
+            echo "Comparing $LAST_TAG...$TAG_NAME"
+            CHANGELOG=$(git log "$LAST_TAG".."$TAG_NAME" --pretty=format:"- %s" 2>/dev/null | head -50)
+          else
+            echo "First release (no previous tag)"
+            CHANGELOG=$(git log --pretty=format:"- %s" | head -50)
+          fi
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Read CHANGELOG section
+        id: full_changelog
+        run: |
+          if [[ -f "CHANGELOG.md" ]]; then
+            # Extract section for this version
+            TAG_NAME="${{ steps.tag_info.outputs.tag_name }}"
+            VERSION="${{ steps.version.outputs.version }}"
+            
+            SECTION=$(awk -v ver="[v${VERSION}]" '
+              $0 ~ ver {found=1; next}
+              found && /^## \[v[0-9]/ {exit}
+              found {print}
+            ' CHANGELOG.md | sed 's/^#*//' | sed 's/^ *//' | head -100)
+            
+            if [[ -n "$SECTION" ]]; then
+              echo "changelog<<EOF" >> $GITHUB_OUTPUT
+              echo "$SECTION" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "Using CHANGELOG.md content"
+            else
+              echo "changelog=${{ steps.changelog.outputs.changelog }}" >> $GITHUB_OUTPUT
+              echo "Using git log for changelog"
+            fi
+          else
+            echo "changelog=${{ steps.changelog.outputs.changelog }}" >> $GITHUB_OUTPUT
+            echo "No CHANGELOG.md found, using git log"
+          fi
+
+      - name: Create GitHub Release
+        if: inputs.mode != 'dry-run'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag_info.outputs.tag_name }}
+          name: Release ${{ steps.tag_info.outputs.tag_name }}
+          body: ${{ steps.full_changelog.outputs.changelog || steps.changelog.outputs.changelog }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: false
+          commit: ${{ steps.tag_info.outputs.tag_commit }}
+          overwrite: ${{ inputs.mode == 'update' || inputs.mode == 'force' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup tag (if requested)
+        if: inputs.delete_tag == 'true' && inputs.mode != 'dry-run'
+        run: |
+          TAG_NAME="${{ steps.tag_info.outputs.tag_name }}"
+          echo "::warning::Deleting tag $TAG_NAME after release"
+          git push --delete origin "$TAG_NAME" || true
+          git tag -d "$TAG_NAME" || true
+          echo "::notice::Tag $TAG_NAME deleted"
+
+      - name: Release Summary
+        run: |
+          echo ""
+          echo "=== RELEASE SUMMARY ==="
+          echo "Tag: ${{ steps.tag_info.outputs.tag_name }}"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Mode: ${{ inputs.mode }}"
+          echo "Release exists: ${{ steps.existing_release.outputs.release_exists }}"
+          echo "Draft: ${{ inputs.draft }}"
+          echo "Pre-release: ${{ inputs.prerelease }}"
+          echo "Deleted tag: ${{ inputs.delete_tag }}"
+          echo ""
+          if [[ "${{ inputs.mode }}" == "dry-run" ]]; then
+            echo "Status: Preview only (no changes made)"
+          elif [[ "${{ steps.existing_release.outputs.release_exists }}" == "true" && "${{ inputs.mode }}" == "auto" ]]; then
+            echo "Status: Skipped (release already exists)"
+          else
+            echo "Status: Created/Updated successfully"
+          fi
+          echo ""
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/${{ steps.tag_info.outputs.tag_name }}"

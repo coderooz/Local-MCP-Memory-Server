@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'   # only trigger on semantic tags
+  workflow_dispatch:
 
 permissions:
   contents: write

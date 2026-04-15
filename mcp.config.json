@@ -4,9 +4,6 @@
       "type": "local",
       "command": ["node", "C:\\Code_Works\\HTML_CSS_JS\\workProjects\\website\\local-mcp-memory\\mcp-server.js"],
       "environment": {
-        "MONGO_URI": "mongodb://localhost:27017/mcp_memory",
-        "PORT": "4000",
-        "MCP_AGENT": "opencode",
         "MCP_SCOPE": "project",
         "MCP_SERVER_URL": "http://localhost:4000"
       },

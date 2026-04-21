@@ -50,9 +50,9 @@
     "chaos:test": "node scripts/chaos-test.js"
   },
   "dependencies": {
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "mongodb": "^7.1.0",
+    "mongodb": "^7.2.0",
     "playwright": "^1.49.1",
     "uuid": "^13.0.0"
   },

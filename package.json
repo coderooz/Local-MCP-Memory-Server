@@ -54,7 +54,7 @@
     "express": "^5.2.1",
     "mongodb": "^7.1.0",
     "playwright": "^1.49.1",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "eslint": "^8.57.0",

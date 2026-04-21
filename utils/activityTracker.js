@@ -1,28 +1,28 @@
-import { ActivityModel, normalizeMemory } from "../mcp.model.js";
+import { ActivityModel, normalizeMemory } from '../core/mcp/models.js';
 
 export async function recordActivity(
   db,
   {
-    agent = "system",
-    project = "default",
-    type = "action",
+    agent = 'system',
+    project = 'default',
+    type = 'action',
     message,
     related_task = null,
     resource = null,
-    metadata = {}
+    metadata = {},
   }
 ) {
   const activity = new ActivityModel({
     agent,
     project,
-    scope: "project",
+    scope: 'project',
     type,
     message,
     related_task,
     resource,
-    metadata
+    metadata,
   });
 
-  await db.collection("activity").insertOne(normalizeMemory(activity));
+  await db.collection('activity').insertOne(normalizeMemory(activity));
   return activity;
 }

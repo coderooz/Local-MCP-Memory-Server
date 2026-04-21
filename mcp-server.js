@@ -2,6 +2,7 @@
 
 import readline from "readline";
 import path from "path";
+import util from "util";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
@@ -9,6 +10,11 @@ import { startMemoryServer } from "./startMemoryServer.js";
 import { GLOBAL_AGENT_INSTRUCTION } from "./agent-instruction.js";
 import { resolveProjectIdentity } from "./utils/projectIdentity.js";
 import * as browserTools from "./tools/browserTools.js";
+import { successResponse, errorResponse, toMCPResponse, createMCPContentResponse, STATUS_CODES } from "./shared/utils/responseFormatter.js";
+import { setMcpStopped, invalidateRuntime, validatePortWithHealth } from "./core/config/runtime-state.js";
+import { getIntegrationTools, handleIntegrationTool } from "./mcp-integration-tools.js";
+import { isFeatureEnabled } from "./core/config/project-config-loader.js";
+import { getConnectionResolver, RECOVERY_STRATEGY } from "./core/config/connectionResolver.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,10 +24,14 @@ dotenv.config({
   quiet: true
 });
 
+console.log = (...args) => {
+  process.stderr.write(`${util.format(...args)}\n`);
+};
+
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout,
-  terminal: false
+  terminal: false,
+  crlfDelay: Infinity
 });
 
 const { projectRoot, derivedProject } = resolveProjectIdentity(
@@ -33,21 +43,277 @@ if (!process.env.MCP_PROJECT_ROOT) {
   process.env.MCP_PROJECT_ROOT = projectRoot;
 }
 
+if (!process.env.MCP_PROJECT && derivedProject) {
+  process.env.MCP_PROJECT = derivedProject;
+}
+
 const CONFIG = {
   agent: process.env.MCP_AGENT || "unknown",
   project: process.env.MCP_PROJECT || derivedProject || "default-project",
   scope: process.env.MCP_SCOPE || "project",
-  projectRoot,
-  serverUrl:
-    process.env.MCP_SERVER_URL ||
-    `http://localhost:${process.env.PORT || 4000}`
+  projectRoot
 };
 
 const memoryServerReady = startMemoryServer();
+const resolver = getConnectionResolver({
+  projectName: CONFIG.project,
+  projectRoot: CONFIG.projectRoot,
+  recoveryStrategy: RECOVERY_STRATEGY.SCAN,
+  maxRetries: 5
+});
+
+let cachedServerUrl = process.env.MCP_SERVER_URL || null;
+let lastServerHealthCheckAt = 0;
+let serverHealthProbePromise = null;
+
+const RELIABILITY = {
+  timeoutMs: Number(process.env.MCP_HTTP_TIMEOUT_MS || 5000),
+  maxSafeRetries: Math.max(0, Number(process.env.MCP_HTTP_SAFE_RETRIES || 2)),
+  circuitFailureThreshold: Math.max(1, Number(process.env.MCP_CIRCUIT_FAILURE_THRESHOLD || 5)),
+  circuitCooldownMs: Math.max(1000, Number(process.env.MCP_CIRCUIT_COOLDOWN_MS || 10000)),
+  maxArgumentStringLength: Math.max(1000, Number(process.env.MCP_MAX_ARGUMENT_STRING_LENGTH || 20000)),
+  maxArgumentPayloadBytes: Math.max(2048, Number(process.env.MCP_MAX_ARGUMENT_PAYLOAD_BYTES || 256000)),
+  healthCacheMs: Math.max(200, Number(process.env.MCP_HEALTH_CACHE_MS || 1000))
+};
+
+const CHAOS = {
+  failureRate: Math.max(0, Math.min(1, Number(process.env.MCP_CHAOS_FAILURE_RATE || 0))),
+  delayMs: Math.max(0, Number(process.env.MCP_CHAOS_DELAY_MS || 0))
+};
+
+const SAFE_RETRY_POST_PATTERNS = [
+  /^\/context\/search$/,
+  /^\/agent\/list$/,
+  /^\/task\/list$/,
+  /^\/issue\/list$/,
+  /^\/metrics$/,
+  /^\/feedback\/list$/,
+  /^\/chat\/room\/[^/]+\/messages$/,
+  /^\/chat\/room\/list$/
+];
+
+const AGENT_ID_FIELD_PATTERN = /(^agent$|agent_id|from_agent|to_agent|assigned_to|created_by)/i;
+const AGENT_ID_SAFE_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
+
+const circuitState = {
+  consecutiveFailures: 0,
+  openedUntil: 0
+};
+
+class MCPStructuredError extends Error {
+  constructor(error, message, details = {}) {
+    super(message);
+    this.name = "MCPStructuredError";
+    this.error = error || "INTERNAL_ERROR";
+    this.details = details || {};
+  }
+}
+
+function toStructuredError(error, fallbackCode = "INTERNAL_ERROR", fallbackMessage = "Internal error") {
+  if (error instanceof MCPStructuredError) {
+    return {
+      error: error.error,
+      message: error.message,
+      ...(error.details && Object.keys(error.details).length ? { details: error.details } : {})
+    };
+  }
+
+  if (error && typeof error === "object") {
+    if (typeof error.error === "string" && typeof error.message === "string") {
+      return {
+        error: error.error,
+        message: error.message,
+        ...(error.details && typeof error.details === "object" ? { details: error.details } : {})
+      };
+    }
+
+    if (error.name === "AbortError") {
+      return {
+        error: "TIMEOUT",
+        message: "Request exceeded limit",
+        details: {
+          timeoutMs: RELIABILITY.timeoutMs
+        }
+      };
+    }
+
+    if (typeof error.message === "string" && error.message.trim()) {
+      return {
+        error: fallbackCode,
+        message: error.message
+      };
+    }
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return {
+      error: fallbackCode,
+      message: error
+    };
+  }
+
+  return {
+    error: fallbackCode,
+    message: fallbackMessage
+  };
+}
+
+function createStructuredError(error, message, details = {}) {
+  return new MCPStructuredError(error, message, details);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function computeBackoffMs(attempt, base = 200, max = 3200) {
+  return Math.min(base * Math.pow(2, Math.max(0, attempt - 1)), max);
+}
+
+function isCircuitOpen() {
+  return Date.now() < circuitState.openedUntil;
+}
+
+function resetCircuitBreaker() {
+  circuitState.consecutiveFailures = 0;
+  circuitState.openedUntil = 0;
+}
+
+function recordCircuitFailure(details = {}) {
+  circuitState.consecutiveFailures += 1;
+  if (circuitState.consecutiveFailures >= RELIABILITY.circuitFailureThreshold) {
+    circuitState.openedUntil = Date.now() + RELIABILITY.circuitCooldownMs;
+    return createStructuredError("CIRCUIT_OPEN", "HTTP backend temporarily unavailable", {
+      ...details,
+      cooldownMs: RELIABILITY.circuitCooldownMs,
+      consecutiveFailures: circuitState.consecutiveFailures
+    });
+  }
+
+  return null;
+}
+
+function isSafeRetryOperation(endpoint, method = "GET") {
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  if (normalizedMethod === "GET" || normalizedMethod === "HEAD") {
+    return true;
+  }
+
+  if (normalizedMethod !== "POST") {
+    return false;
+  }
+
+  return SAFE_RETRY_POST_PATTERNS.some((pattern) => pattern.test(endpoint));
+}
+
+function isRetryableError(structuredError) {
+  const code = structuredError?.error;
+  return (
+    code === "TIMEOUT" ||
+    code === "NETWORK_FAILURE" ||
+    code === "UPSTREAM_UNAVAILABLE" ||
+    code === "SERVER_UNAVAILABLE"
+  );
+}
+
+function createHttpFailure(status, endpoint, method, payload) {
+  const message =
+    typeof payload === "string"
+      ? payload
+      : payload?.message || payload?.error || `Request failed with status ${status}`;
+  const error =
+    status >= 500
+      ? "UPSTREAM_UNAVAILABLE"
+      : status === 408 || status === 504
+        ? "TIMEOUT"
+        : "UPSTREAM_ERROR";
+
+  return createStructuredError(error, message, {
+    status,
+    endpoint,
+    method
+  });
+}
+
+async function maybeInjectChaosFault(stage, timeoutMs) {
+  if (CHAOS.delayMs > 0) {
+    if (CHAOS.delayMs > timeoutMs) {
+      await sleep(timeoutMs + 5);
+      throw createStructuredError("TIMEOUT", "Request exceeded limit", {
+        simulated: true,
+        stage,
+        timeoutMs
+      });
+    }
+    await sleep(CHAOS.delayMs);
+  }
+
+  if (CHAOS.failureRate > 0 && Math.random() < CHAOS.failureRate) {
+    throw createStructuredError("NETWORK_FAILURE", "Simulated network failure", {
+      simulated: true,
+      stage
+    });
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = RELIABILITY.timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw createStructuredError("TIMEOUT", "Request exceeded limit", {
+        timeoutMs,
+        url
+      });
+    }
+    throw createStructuredError("NETWORK_FAILURE", "Network request failed", {
+      url,
+      cause: error?.message || "Unknown network error"
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function resolveServerUrl(forceRefresh = false) {
+  if (!forceRefresh && cachedServerUrl) {
+    try {
+      const parsed = new URL(cachedServerUrl);
+      const port = Number(parsed.port);
+      const validation = await validatePortWithHealth(port, {
+        expectedProject: CONFIG.project
+      });
+      if (validation.valid) {
+        return cachedServerUrl;
+      }
+    } catch {}
+  }
+
+  const resolved = await resolver.resolveConnection();
+  if (!resolved.success || !resolved.port) {
+    throw new Error("MCP runtime not resolved");
+  }
+
+  cachedServerUrl = `http://localhost:${resolved.port}`;
+  process.env.MCP_SERVER_URL = cachedServerUrl;
+  process.env.PORT = String(resolved.port);
+  return cachedServerUrl;
+}
 
 async function logMCPError(error, context = {}) {
   try {
-    await fetch(`${CONFIG.serverUrl}/log`, {
+    const serverUrl = await resolveServerUrl().catch(() => null);
+    if (!serverUrl) {
+      return;
+    }
+
+    await fetchWithTimeout(`${serverUrl}/log`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -62,7 +328,7 @@ async function logMCPError(error, context = {}) {
           project: CONFIG.project
         }
       })
-    });
+    }, RELIABILITY.timeoutMs);
   } catch {}
 }
 
@@ -76,35 +342,129 @@ async function parseResponse(response) {
   return response.text();
 }
 
-async function waitForServer(url, retries = 10) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await fetch(url);
-      return;
-    } catch {
-      await new Promise(r => setTimeout(r, 300));
-    }
+async function waitForServer(retries = 5) {
+  if (cachedServerUrl && Date.now() - lastServerHealthCheckAt < RELIABILITY.healthCacheMs) {
+    return cachedServerUrl;
   }
-  throw new Error("Memory server not reachable");
+
+  if (serverHealthProbePromise) {
+    return serverHealthProbePromise;
+  }
+
+  serverHealthProbePromise = (async () => {
+    for (let i = 1; i <= retries; i++) {
+      try {
+        const serverUrl = await resolveServerUrl(i > 1);
+        const healthRes = await fetchWithTimeout(`${serverUrl}/health`, {
+          method: "GET",
+          headers: { "X-MCP-Health-Check": "true" }
+        }, RELIABILITY.timeoutMs);
+
+        if (healthRes.ok || healthRes.status === 429) {
+          lastServerHealthCheckAt = Date.now();
+          return serverUrl;
+        }
+
+        if (i < retries) {
+          await sleep(computeBackoffMs(i));
+        }
+      } catch {
+        if (i >= retries) {
+          break;
+        }
+        await sleep(computeBackoffMs(i));
+      }
+    }
+
+    throw createStructuredError("SERVER_UNAVAILABLE", "Memory server not reachable", {
+      retries
+    });
+  })();
+
+  try {
+    return await serverHealthProbePromise;
+  } finally {
+    serverHealthProbePromise = null;
+  }
 }
 
 async function callMemoryApi(endpoint, options = {}) {
   await memoryServerReady;
-  await waitForServer(CONFIG.serverUrl);
+  const method = String(options.method || "GET").toUpperCase();
+  const safeRetry = options.safeRetry ?? isSafeRetryOperation(endpoint, method);
+  const maxAttempts = safeRetry ? 1 + RELIABILITY.maxSafeRetries : 1;
 
-  const response = await fetch(`${CONFIG.serverUrl}${endpoint}`, options);
-  const payload = await parseResponse(response);
+  let lastError = null;
 
-  if (!response.ok) {
-    const message =
-      typeof payload === "string"
-        ? payload
-        : payload?.error || `Request failed with status ${response.status}`;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (isCircuitOpen()) {
+        throw createStructuredError("CIRCUIT_OPEN", "HTTP backend temporarily unavailable", {
+          endpoint,
+          method,
+          retryAfterMs: Math.max(0, circuitState.openedUntil - Date.now())
+        });
+      }
 
-    throw new Error(message);
+      const serverUrl = await waitForServer();
+      await maybeInjectChaosFault("request:start", RELIABILITY.timeoutMs);
+
+      const response = await fetchWithTimeout(`${serverUrl}${endpoint}`, options, RELIABILITY.timeoutMs);
+      const payload = await parseResponse(response);
+
+      if (!response.ok) {
+        throw createHttpFailure(response.status, endpoint, method, payload);
+      }
+
+      if (payload && typeof payload === "object") {
+        if (payload.success === false && payload.error) {
+          const parsedError =
+            typeof payload.error === "string"
+              ? { error: "UPSTREAM_ERROR", message: payload.error, details: payload }
+              : {
+                  error: payload.error.code || payload.error.type || "UPSTREAM_ERROR",
+                  message: payload.message || payload.error.message || "Upstream operation failed",
+                  details: payload.error.details || payload
+                };
+          throw createStructuredError(
+            parsedError.error,
+            parsedError.message,
+            parsedError.details || {}
+          );
+        }
+
+        if (typeof payload.error === "string" && payload.error.trim()) {
+          throw createStructuredError("UPSTREAM_ERROR", payload.error, { endpoint, method });
+        }
+      }
+
+      resetCircuitBreaker();
+      return payload;
+    } catch (error) {
+      const structured = toStructuredError(error, "SERVER_UNAVAILABLE", "Memory server not reachable");
+      lastError = structured;
+
+      if (structured.error !== "CIRCUIT_OPEN") {
+        const breakerError = recordCircuitFailure({
+          endpoint,
+          method,
+          attempt
+        });
+        if (breakerError && attempt >= maxAttempts) {
+          throw toStructuredError(breakerError);
+        }
+      }
+
+      const shouldRetry = safeRetry && attempt < maxAttempts && isRetryableError(structured);
+      if (!shouldRetry) {
+        throw structured;
+      }
+
+      await sleep(computeBackoffMs(attempt));
+    }
   }
 
-  return payload;
+  throw lastError || createStructuredError("SERVER_UNAVAILABLE", "Memory server not reachable");
 }
 
 function buildEndpoint(pathname, params = {}) {
@@ -132,17 +492,52 @@ function respond(id, result) {
   );
 }
 
-function respondError(id, code, message) {
+function respondError(id, code, error) {
+  const structured = toStructuredError(error);
   process.stdout.write(
     JSON.stringify({
       jsonrpc: "2.0",
       id,
       error: {
         code,
-        message
+        message: structured.message,
+        data: structured
       }
     }) + "\n"
   );
+}
+
+function standardizeToolResponse(toolName, data, message = null) {
+  if (data && data.success === false) {
+    return errorResponse({
+      message: data.message || data.error || "Tool execution failed",
+      status: data.status || STATUS_CODES.SERVER_ERROR,
+      errorCode: data.errorCode || "TOOL_ERROR",
+      details: data.details,
+      tool: toolName
+    });
+  }
+  return successResponse({
+    message: message || "Tool executed successfully",
+    data: data,
+    tool: toolName
+  });
+}
+
+async function executeStandardizedTool(toolName, handler, args, config) {
+  try {
+    const result = await handler(args, config);
+    const response = standardizeToolResponse(toolName, result);
+    return toMCPResponse(response);
+  } catch (error) {
+    const errorResp = errorResponse({
+      message: error.message || "Tool execution failed",
+      errorCode: "TOOL_EXECUTION_ERROR",
+      details: error.stack,
+      tool: toolName
+    });
+    return toMCPResponse(errorResp);
+  }
 }
 
 function unwrapBrowserToolData(result) {
@@ -1147,6 +1542,183 @@ function getTools() {
   ];
 }
 
+let toolSchemaCache = null;
+
+function getToolSchemaMap() {
+  const map = new Map();
+  const allTools = [...getTools(), ...getIntegrationTools()];
+
+  for (const tool of allTools) {
+    if (tool?.name && tool?.inputSchema && typeof tool.inputSchema === "object") {
+      map.set(tool.name, tool.inputSchema);
+    }
+  }
+
+  return map;
+}
+
+function resolveToolSchema(toolName) {
+  if (!toolSchemaCache) {
+    toolSchemaCache = getToolSchemaMap();
+  }
+
+  if (!toolSchemaCache.has(toolName)) {
+    const refreshed = getToolSchemaMap();
+    if (refreshed.has(toolName)) {
+      toolSchemaCache = refreshed;
+    }
+  }
+
+  return toolSchemaCache.get(toolName) || null;
+}
+
+function validateSchemaValue(value, schema, path) {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    return `${path} must be one of: ${schema.enum.join(", ")}`;
+  }
+
+  const type = schema.type;
+  switch (type) {
+    case "string":
+      if (typeof value !== "string") {
+        return `${path} must be a string`;
+      }
+      if (value.length > RELIABILITY.maxArgumentStringLength) {
+        return `${path} exceeds maximum length of ${RELIABILITY.maxArgumentStringLength}`;
+      }
+      return null;
+    case "number":
+      if (typeof value !== "number" || Number.isNaN(value)) {
+        return `${path} must be a number`;
+      }
+      return null;
+    case "integer":
+      if (!Number.isInteger(value)) {
+        return `${path} must be an integer`;
+      }
+      return null;
+    case "boolean":
+      if (typeof value !== "boolean") {
+        return `${path} must be a boolean`;
+      }
+      return null;
+    case "array":
+      if (!Array.isArray(value)) {
+        return `${path} must be an array`;
+      }
+      if (schema.items) {
+        for (let i = 0; i < value.length; i++) {
+          const issue = validateSchemaValue(value[i], schema.items, `${path}[${i}]`);
+          if (issue) {
+            return issue;
+          }
+        }
+      }
+      return null;
+    case "object":
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return `${path} must be an object`;
+      }
+      if (Array.isArray(schema.required)) {
+        for (const field of schema.required) {
+          if (!(field in value)) {
+            return `${path}.${field} is required`;
+          }
+        }
+      }
+      if (schema.properties && typeof schema.properties === "object") {
+        for (const [propertyName, propertySchema] of Object.entries(schema.properties)) {
+          if (value[propertyName] === undefined) {
+            continue;
+          }
+          const issue = validateSchemaValue(
+            value[propertyName],
+            propertySchema,
+            `${path}.${propertyName}`
+          );
+          if (issue) {
+            return issue;
+          }
+        }
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+function validateToolArguments(toolName, args) {
+  const schema = resolveToolSchema(toolName);
+  if (!schema) {
+    return null;
+  }
+
+  if (args === undefined) {
+    args = {};
+  }
+
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return createStructuredError("INVALID_INPUT", "Tool arguments must be an object", {
+      tool: toolName
+    });
+  }
+
+  let payloadSize = 0;
+  try {
+    payloadSize = Buffer.byteLength(JSON.stringify(args), "utf8");
+  } catch {
+    return createStructuredError("INVALID_INPUT", "Tool arguments must be JSON-serializable", {
+      tool: toolName
+    });
+  }
+
+  if (payloadSize > RELIABILITY.maxArgumentPayloadBytes) {
+    return createStructuredError("INVALID_INPUT", "Tool arguments exceed maximum payload size", {
+      tool: toolName,
+      maxBytes: RELIABILITY.maxArgumentPayloadBytes,
+      actualBytes: payloadSize
+    });
+  }
+
+  const issues = [];
+  for (const field of schema.required || []) {
+    if (args[field] === undefined || args[field] === null) {
+      issues.push(`arguments.${field} is required`);
+    }
+  }
+
+  for (const [propertyName, propertySchema] of Object.entries(schema.properties || {})) {
+    if (args[propertyName] === undefined) {
+      continue;
+    }
+    const issue = validateSchemaValue(args[propertyName], propertySchema, `arguments.${propertyName}`);
+    if (issue) {
+      issues.push(issue);
+    }
+  }
+
+  for (const [propertyName, value] of Object.entries(args)) {
+    if (typeof value === "string" && AGENT_ID_FIELD_PATTERN.test(propertyName)) {
+      if (!AGENT_ID_SAFE_PATTERN.test(value)) {
+        issues.push(`arguments.${propertyName} contains invalid agent ID format`);
+      }
+    }
+  }
+
+  if (issues.length) {
+    return createStructuredError("INVALID_INPUT", "Input validation failed", {
+      tool: toolName,
+      issues
+    });
+  }
+
+  return null;
+}
+
 rl.on("line", (line) => {
   let request;
 
@@ -1154,13 +1726,22 @@ rl.on("line", (line) => {
     request = JSON.parse(line);
   } catch (error) {
     void logMCPError(error, { rawInput: line });
+    respondError(null, -32700, createStructuredError("INVALID_JSON", "Invalid JSON-RPC payload", {
+      parseError: error.message
+    }));
     return;
   }
 
   const run = async () => {
     try {
       if (request.method === "initialize") {
-        await memoryServerReady;
+        try {
+          await memoryServerReady;
+        } catch (error) {
+          throw createStructuredError("SERVER_UNAVAILABLE", "Memory server startup failed", {
+            cause: error?.message || "Unknown startup error"
+          });
+        }
 
         return respond(request.id, {
           protocolVersion: "2024-11-05",
@@ -1171,7 +1752,7 @@ rl.on("line", (line) => {
           },
           serverInfo: {
             name: "mcp-memory-server",
-            version: "2.3.0",
+            version: "2.5.0",
             description: "Persistent multi-agent memory system for AI agents",
             author: "Ranit Saha (Coderooz)"
           },
@@ -1185,13 +1766,19 @@ rl.on("line", (line) => {
       }
 
       if (request.method === "tools/list") {
+        const baseTools = getTools();
+        const integrationTools = getIntegrationTools();
         return respond(request.id, {
-          tools: getTools()
+          tools: [...baseTools, ...integrationTools]
         });
       }
 
       if (request.method === "tools/call") {
         const { name, arguments: args = {} } = request.params || {};
+        const validationError = validateToolArguments(name, args);
+        if (validationError) {
+          return respondError(request.id, -32602, validationError);
+        }
 
       if (name === "list_agents") {
         const data = await callMemoryApi("/agent/list");
@@ -2088,13 +2675,37 @@ rl.on("line", (line) => {
         });
       }
 
-      return respondError(request.id, -32601, `Unknown tool: ${name}`);
+      const integrationToolNames = [
+        'redis_get', 'redis_set', 'redis_del', 'redis_exists', 'redis_keys',
+        'store_knowledge', 'search_knowledge', 'get_knowledge', 'update_knowledge', 'delete_knowledge',
+        'browser_open', 'browser_navigate', 'browser_get_content', 'browser_click', 'browser_fill',
+        'browser_evaluate', 'browser_screenshot', 'browser_close', 'browser_list_sessions'
+      ];
+
+      if (integrationToolNames.includes(name)) {
+        try {
+          const result = await handleIntegrationTool(name, args);
+          return respond(request.id, {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+          });
+        } catch (error) {
+          return respondError(request.id, -32603, error);
+        }
+      }
+
+      return respondError(
+        request.id,
+        -32601,
+        createStructuredError("UNKNOWN_TOOL", `Unknown tool: ${name}`, {
+          tool: name
+        })
+      );
     }
     } catch (error) {
       await logMCPError(error, { rawInput: line });
 
       if (request && Object.prototype.hasOwnProperty.call(request, "id")) {
-        return respondError(request.id, -32603, error.message || "Internal error");
+        return respondError(request.id, -32603, error);
       }
     }
   };
@@ -2107,3 +2718,30 @@ rl.on("line", (line) => {
 
   void run();
 });
+
+function setupShutdownHooks() {
+  const cleanup = async () => {
+    try {
+      await setMcpStopped();
+      invalidateRuntime();
+    } catch {}
+  };
+
+  process.on('SIGINT', () => {
+    void cleanup().finally(() => process.exit(0));
+  });
+
+  process.on('SIGTERM', () => {
+    void cleanup().finally(() => process.exit(0));
+  });
+
+  process.on('exit', (code) => {
+    if (code !== 0) {
+      invalidateRuntime();
+    }
+  });
+}
+
+if (process.argv[1] && process.argv[1].endsWith('mcp-server.js')) {
+  setupShutdownHooks();
+}

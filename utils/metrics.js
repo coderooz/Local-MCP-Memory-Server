@@ -1,26 +1,19 @@
-import { MetricModel, normalizeMemory } from "../mcp.model.js";
+import { MetricModel, normalizeMemory } from '../core/mcp/models.js';
 
 export async function recordMetric(
   db,
-  {
-    agent = "system",
-    project = "default",
-    metric_type,
-    name,
-    value = 1,
-    data = {}
-  }
+  { agent = 'system', project = 'default', metric_type, name, value = 1, data = {} }
 ) {
   const metric = new MetricModel({
     agent,
     project,
-    scope: "project",
+    scope: 'project',
     metric_type,
     name,
     value,
-    data
+    data,
   });
 
-  await db.collection("metrics").insertOne(normalizeMemory(metric));
+  await db.collection('metrics').insertOne(normalizeMemory(metric));
   return metric;
 }

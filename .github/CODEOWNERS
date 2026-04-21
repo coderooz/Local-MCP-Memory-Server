@@ -1,0 +1,14 @@
+# Code Owners for Local MCP Memory Server
+
+# Default owner for all files
+* @coderooz/maintainers
+
+# Specific file owners
+mcp-server.js @coderooz/mcp-team
+mcp-shim.js @coderooz/mcp-team
+server.js @coderooz/core-team
+utils/ @coderooz/core-team
+tools/ @coderooz/core-team
+docs/ @coderooz/docs-team
+tests/ @coderooz/qa-team
+.github/ @coderooz/infra-team

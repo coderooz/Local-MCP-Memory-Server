@@ -1,6 +1,6 @@
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from 'uuid';
 
-import { ContextModel, normalizeMemory } from "./mcp.model.js";
+import { ContextModel, normalizeMemory } from '../../core/mcp/models.js';
 
 let dbInstance = null;
 
@@ -14,20 +14,20 @@ async function logToDB(log) {
   }
 
   try {
-    await dbInstance.collection("logs").insertOne({
+    await dbInstance.collection('logs').insertOne({
       id: uuidv4(),
       ...log,
-      createdAt: new Date()
+      createdAt: new Date(),
     });
   } catch {}
 }
 
 export async function logError(error, context = {}) {
   await logToDB({
-    type: "error",
+    type: 'error',
     message: error.message,
     stack: error.stack,
-    context
+    context,
   });
 
   if (!dbInstance) {
@@ -36,25 +36,25 @@ export async function logError(error, context = {}) {
 
   try {
     const memory = new ContextModel({
-      agent: context.agent || "system",
-      project: context.project || "global",
-      scope: "global",
-      type: "error",
+      agent: context.agent || 'system',
+      project: context.project || 'global',
+      scope: 'global',
+      type: 'error',
       content: error.message,
       metadata: context,
-      tags: ["error", "debug"]
+      tags: ['error', 'debug'],
     });
 
-    await dbInstance.collection("contexts").insertOne(normalizeMemory(memory));
+    await dbInstance.collection('contexts').insertOne(normalizeMemory(memory));
   } catch (err) {
-    process.stderr.write("Logger error: " + err.message + "\n");
+    process.stderr.write('Logger error: ' + err.message + '\n');
   }
 }
 
 export async function logInfo(message, context = {}) {
   await logToDB({
-    type: "info",
+    type: 'info',
     message,
-    context
+    context,
   });
 }

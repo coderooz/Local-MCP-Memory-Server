@@ -142,3 +142,30 @@ vite.config.ts.timestamp-*
 *.patch
 CODEBASE.md
 result.md
+
+# Editor files
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ESLint
+.eslintcache
+
+# Prettier
+.prettiercache
+
+# Logs
+logs/
+*.log
+
+# MCP session files
+.mcp-session*
+.mcp-token*
+
+# MCP runtime state (regenerated on start)
+.mcp-runtime.json
+.mcp-port
+.mcp-port.lock

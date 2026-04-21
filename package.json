@@ -1,23 +1,53 @@
 {
   "name": "local-mcp-memory",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Persistent multi-agent memory server using MCP protocol",
   "main": "mcp-server.js",
+  "type": "module",
+  "keywords": [
+    "mcp",
+    "memory",
+    "multi-agent",
+    "coordination",
+    "mongodb",
+    "ai",
+    "agents",
+    "context-management"
+  ],
+  "author": {
+    "name": "Ranit Saha",
+    "email": "contact@coderooz.in",
+    "url": "https://coderooz.in"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coderooz/Local-MCP-Memory-Server"
+  },
+  "homepage": "https://coderooz.github.io/Local-MCP-Memory-Server/",
+  "bugs": {
+    "url": "https://github.com/coderooz/Local-MCP-Memory-Server/issues",
+    "email": "contact@coderooz.in"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "node mcp-server.js",
     "start:api": "node server.js",
     "migrate:project-id": "node migrate-project-id.js",
     "docs:screenshots": "node tests/generate-doc-screenshots.js",
-    "check": "node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check mcp.model.js && node --check logger.js && node --check agent-instruction.js && node --check utils/projectIdentity.js && node --check utils/routeHandler.js && node --check utils/eventBus.js && node --check utils/coordinationEngine.js && node --check utils/collaborationEngine.js && node --check utils/activityTracker.js && node --check utils/memoryEngine.js && node --check utils/metrics.js && node --check utils/resetEngine.js && node --check docs/app.js && node --check tools/browserTools.js && node --check tools/index.js && node --check tools/store_context.js",
-    "test": "npm run check"
-  },
-  "type": "module",
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/coderooz/Local-MCP-Memory-Server"
+    "check": "node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check core/mcp/models.js && node --check shared/utils/logger.js && node --check agent-instruction.js && node --check utils/projectIdentity.js && node --check utils/routeHandler.js && node --check utils/eventBus.js && node --check utils/coordinationEngine.js && node --check utils/collaborationEngine.js && node --check utils/activityTracker.js && node --check utils/memoryEngine.js && node --check utils/metrics.js && node --check utils/resetEngine.js && node --check docs/app.js && node --check tools/browserTools.js && node --check tools/index.js && node --check tools/store_context.js && node --check tools/emulatorTools.js && node --check tools/feedbackTools.js && node --check tools/chatTools.js && node --check plugins/emulator/index.js && node --check src/core/database/connection.js && node --check src/core/database/models.js && node --check src/domains/memory/memory.service.js && node --check src/domains/feedback/feedback.service.js && node --check src/domains/chat/chat.service.js && node --check src/core/mcp/tool-registry.js && node --check src/core/mcp/tool-executor.js && node --check src/interfaces/mcp-tools/tool-definitions.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run check && npm run test:feedback && npm run test:chat",
+    "test:emulator": "node tests/emulator-plugin-test.js",
+    "test:feedback": "node tests/feedback-system-test.js",
+    "test:chat": "node tests/chat-system-test.js",
+    "test:chaos:resilience": "node tests/mcp-chaos-resilience-test.js",
+    "chaos:test": "node scripts/chaos-test.js"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
@@ -25,5 +55,9 @@
     "mongodb": "^7.1.0",
     "playwright": "^1.49.1",
     "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.0"
   }
 }

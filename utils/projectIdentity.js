@@ -1,15 +1,15 @@
-import fs from "fs";
-import path from "path";
-import os from "os";
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 /**
  * Custom error class for MCP setup requirements.
  * Thrown when no valid configuration is found.
  */
 export class MCPSetupRequiredError extends Error {
-  constructor(message = "MCP configuration not found. Setup required.") {
+  constructor(message = 'MCP configuration not found. Setup required.') {
     super(message);
-    this.name = "MCPSetupRequiredError";
+    this.name = 'MCPSetupRequiredError';
   }
 }
 
@@ -18,10 +18,10 @@ export class MCPSetupRequiredError extends Error {
  * Priority: 1. Project-level > 2. Global > 3. Environment > 4. Error
  */
 export const CONFIG_HIERARCHY = {
-  PROJECT: "project",
-  GLOBAL: "global",
-  ENVIRONMENT: "environment",
-  NONE: "none"
+  PROJECT: 'project',
+  GLOBAL: 'global',
+  ENVIRONMENT: 'environment',
+  NONE: 'none'
 };
 
 /**
@@ -29,15 +29,15 @@ export const CONFIG_HIERARCHY = {
  * @type {string[]}
  */
 const PROJECT_MARKERS = [
-  ".mcp-project",
-  ".mcp-project.json",
-  ".git",
-  ".roo",
-  "package.json",
-  "pyproject.toml",
-  "requirements.txt",
-  "Pipfile",
-  ".venv"
+  '.mcp-project',
+  '.mcp-project.json',
+  '.git',
+  '.roo',
+  'package.json',
+  'pyproject.toml',
+  'requirements.txt',
+  'Pipfile',
+  '.venv'
 ];
 
 /**
@@ -92,13 +92,13 @@ export function findProjectRoot(startDirectory = process.cwd()) {
  * @example
  * slugifyProjectName("My Awesome Project!"); // "my-awesome-project"
  */
-export function slugifyProjectName(name = "") {
+export function slugifyProjectName(name = '') {
   return (
     name
       .trim()
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "default-project"
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'default-project'
   );
 }
 
@@ -116,7 +116,7 @@ function readTextFileIfExists(filePath) {
     return null;
   }
 
-  return fs.readFileSync(filePath, "utf8").trim();
+  return fs.readFileSync(filePath, 'utf8').trim();
 }
 
 /**
@@ -139,20 +139,20 @@ function readTextFileIfExists(filePath) {
 function readProjectOverride(projectRoot) {
   // Check .mcp-project file (simple text format)
   const textOverride = readTextFileIfExists(
-    path.join(projectRoot, ".mcp-project")
+    path.join(projectRoot, '.mcp-project')
   );
 
   if (textOverride) {
     return {
       project: textOverride.trim(),
       agent: null,
-      source: ".mcp-project"
+      source: '.mcp-project'
     };
   }
 
   // Check .mcp-project.json file (structured format)
   const jsonOverride = readTextFileIfExists(
-    path.join(projectRoot, ".mcp-project.json")
+    path.join(projectRoot, '.mcp-project.json')
   );
 
   if (!jsonOverride) {
@@ -164,8 +164,8 @@ function readProjectOverride(projectRoot) {
     return {
       project: parsed.project || parsed.name || null,
       agent: parsed.agent || null,
-      scope: parsed.scope || "project",
-      source: ".mcp-project.json"
+      scope: parsed.scope || 'project',
+      source: '.mcp-project.json'
     };
   } catch {
     return null;
@@ -184,7 +184,7 @@ function readProjectOverride(projectRoot) {
  */
 function readPackageProjectName(projectRoot) {
   const packageJson = readTextFileIfExists(
-    path.join(projectRoot, "package.json")
+    path.join(projectRoot, 'package.json')
   );
 
   if (!packageJson) {
@@ -209,7 +209,7 @@ function readPackageProjectName(projectRoot) {
  * getGlobalConfigPath(); // "/home/user/.mcp"
  */
 function getGlobalConfigPath() {
-  return path.join(os.homedir(), ".mcp");
+  return path.join(os.homedir(), '.mcp');
 }
 
 /**
@@ -225,23 +225,23 @@ function getGlobalConfigPath() {
  */
 function readGlobalConfig() {
   const globalPath = getGlobalConfigPath();
-  const globalConfigFile = path.join(globalPath, "config.json");
+  const globalConfigFile = path.join(globalPath, 'config.json');
 
   if (!fs.existsSync(globalConfigFile)) {
     return null;
   }
 
   try {
-    const content = fs.readFileSync(globalConfigFile, "utf8");
+    const content = fs.readFileSync(globalConfigFile, 'utf8');
     const parsed = JSON.parse(content);
 
     // Support both flat structure and nested structure
-    const config = parsed.mcpServers?.["local-mcp-memory"]?.environment || parsed;
+    const config = parsed.mcpServers?.['local-mcp-memory']?.environment || parsed;
 
     return {
       project: config.MCP_PROJECT || config.project || null,
       agent: config.MCP_AGENT || config.agent || null,
-      scope: config.MCP_SCOPE || config.scope || "project",
+      scope: config.MCP_SCOPE || config.scope || 'project',
       source: globalConfigFile
     };
   } catch {
@@ -270,7 +270,7 @@ function readEnvironmentConfig(env = process.env) {
       project,
       agent,
       scope,
-      source: "environment"
+      source: 'environment'
     };
   }
 
@@ -316,7 +316,7 @@ export function resolveIdentity(
       projectRoot,
       project: slugifyProjectName(projectOverride.project),
       agent: projectOverride.agent || env.MCP_AGENT || generateDefaultAgent(),
-      scope: projectOverride.scope || env.MCP_SCOPE || "project",
+      scope: projectOverride.scope || env.MCP_SCOPE || 'project',
       source: projectOverride.source,
       hierarchy: CONFIG_HIERARCHY.PROJECT
     };
@@ -329,7 +329,7 @@ export function resolveIdentity(
       projectRoot,
       project: slugifyProjectName(globalConfig.project),
       agent: globalConfig.agent || env.MCP_AGENT || generateDefaultAgent(),
-      scope: globalConfig.scope || env.MCP_SCOPE || "project",
+      scope: globalConfig.scope || env.MCP_SCOPE || 'project',
       source: globalConfig.source,
       hierarchy: CONFIG_HIERARCHY.GLOBAL
     };
@@ -342,7 +342,7 @@ export function resolveIdentity(
       projectRoot,
       project: slugifyProjectName(envConfig.project || readPackageProjectName(projectRoot) || path.basename(projectRoot)),
       agent: envConfig.agent || generateDefaultAgent(),
-      scope: envConfig.scope || "project",
+      scope: envConfig.scope || 'project',
       source: envConfig.source,
       hierarchy: CONFIG_HIERARCHY.ENVIRONMENT
     };
@@ -351,29 +351,29 @@ export function resolveIdentity(
   // Priority 4: No config found
   if (strict) {
     throw new MCPSetupRequiredError(
-      `MCP configuration not found.\n\n` +
-      `Please configure your MCP identity:\n` +
-      `  1. Create .mcp-project file with your project name\n` +
-      `  2. Or create .mcp-project.json with { "project": "name", "agent": "agent-name" }\n` +
-      `  3. Or set MCP_PROJECT and MCP_AGENT environment variables\n` +
-      `  4. Or create ~/.mcp/config.json with your defaults\n\n` +
-      `Auto-generation available - see setupMCP() function.`
+      'MCP configuration not found.\n\n' +
+      'Please configure your MCP identity:\n' +
+      '  1. Create .mcp-project file with your project name\n' +
+      '  2. Or create .mcp-project.json with { "project": "name", "agent": "agent-name" }\n' +
+      '  3. Or set MCP_PROJECT and MCP_AGENT environment variables\n' +
+      '  4. Or create ~/.mcp/config.json with your defaults\n\n' +
+      'Auto-generation available - see setupMCP() function.'
     );
   }
 
   // Fallback (only in non-strict mode) - DEPRECATED BEHAVIOR
   console.warn(
-    `[MCP WARNING] No configuration found. Using fallback values.\n` +
-    `This behavior is deprecated. Please configure MCP properly.\n` +
-    `Run setupMCP() to auto-generate configuration.`
+    '[MCP WARNING] No configuration found. Using fallback values.\n' +
+    'This behavior is deprecated. Please configure MCP properly.\n' +
+    'Run setupMCP() to auto-generate configuration.'
   );
 
   return {
     projectRoot,
     project: slugifyProjectName(readPackageProjectName(projectRoot) || path.basename(projectRoot)),
-    agent: "unknown",
-    scope: "project",
-    source: "fallback",
+    agent: 'unknown',
+    scope: 'project',
+    source: 'fallback',
     hierarchy: CONFIG_HIERARCHY.NONE
   };
 }
@@ -387,8 +387,8 @@ export function resolveIdentity(
  * generateDefaultAgent(); // "agent-{username}-{hostname}"
  */
 function generateDefaultAgent() {
-  const username = os.userInfo().username || "user";
-  const hostname = os.hostname().split(".")[0] || "localhost";
+  const username = os.userInfo().username || 'user';
+  const hostname = os.hostname().split('.')[0] || 'localhost';
   return `agent-${username}-${hostname}`;
 }
 
@@ -411,7 +411,7 @@ export function checkConfigExists(startDirectory = process.cwd()) {
     return {
       exists: true,
       hierarchy: CONFIG_HIERARCHY.PROJECT,
-      source: ".mcp-project"
+      source: '.mcp-project'
     };
   }
 
@@ -419,7 +419,7 @@ export function checkConfigExists(startDirectory = process.cwd()) {
     return {
       exists: true,
       hierarchy: CONFIG_HIERARCHY.GLOBAL,
-      source: "~/.mcp/config.json"
+      source: '~/.mcp/config.json'
     };
   }
 
@@ -428,7 +428,7 @@ export function checkConfigExists(startDirectory = process.cwd()) {
     return {
       exists: true,
       hierarchy: CONFIG_HIERARCHY.ENVIRONMENT,
-      source: "environment"
+      source: 'environment'
     };
   }
 
@@ -464,7 +464,7 @@ export function setupMCP(projectRoot, options = {}) {
   const {
     project: customProject = null,
     agent: customAgent = null,
-    scope = "project",
+    scope = 'project',
     global = false
   } = options;
 
@@ -480,7 +480,7 @@ export function setupMCP(projectRoot, options = {}) {
   if (global) {
     // Create global config
     const globalDir = getGlobalConfigPath();
-    const globalConfigPath = path.join(globalDir, "config.json");
+    const globalConfigPath = path.join(globalDir, 'config.json');
 
     // Ensure directory exists
     if (!fs.existsSync(globalDir)) {
@@ -489,8 +489,8 @@ export function setupMCP(projectRoot, options = {}) {
 
     const content = {
       mcpServers: {
-        "local-mcp-memory": {
-          type: "local",
+        'local-mcp-memory': {
+          type: 'local',
           environment: {
             MCP_PROJECT: projectName,
             MCP_AGENT: agentName,
@@ -511,14 +511,14 @@ export function setupMCP(projectRoot, options = {}) {
   }
 
   // Create project-level config (.mcp-project.json preferred for structured data)
-  const configPath = path.join(projectRoot, ".mcp-project.json");
-  const simplePath = path.join(projectRoot, ".mcp-project");
+  const configPath = path.join(projectRoot, '.mcp-project.json');
+  const simplePath = path.join(projectRoot, '.mcp-project');
 
   const content = {
     project: projectName,
     agent: agentName,
     scope: scope,
-    version: "1.0.0",
+    version: '1.0.0',
     createdAt: new Date().toISOString()
   };
 
@@ -563,10 +563,10 @@ No MCP configuration detected. Please choose an option:
 Enter choice (1-4): `,
 
     options: {
-      "1": "auto-generate",
-      "2": "global-config",
-      "3": "manual",
-      "4": "environment"
+      '1': 'auto-generate',
+      '2': 'global-config',
+      '3': 'manual',
+      '4': 'environment'
     }
   };
 }
@@ -604,7 +604,7 @@ export function resolveProjectIdentity(
     if (error instanceof MCPSetupRequiredError) {
       // Log for debugging but don't crash the server
       console.error(`[MCP] ${error.message}`);
-      console.error(`[MCP] Server starting with fallback identity.`);
+      console.error('[MCP] Server starting with fallback identity.');
 
       const projectRoot = findProjectRoot(startDirectory);
 
@@ -616,9 +616,9 @@ export function resolveProjectIdentity(
         project: slugifyProjectName(
           readPackageProjectName(projectRoot) || path.basename(projectRoot)
         ),
-        agent: "unconfigured",
-        scope: "project",
-        source: "none",
+        agent: 'unconfigured',
+        scope: 'project',
+        source: 'none',
         hierarchy: CONFIG_HIERARCHY.NONE
       };
     }

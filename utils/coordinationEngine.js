@@ -11,23 +11,23 @@ export function deriveAgentStatus(agent, now = new Date()) {
   const ageMs = now.getTime() - lastSeen.getTime();
 
   if (ageMs > OFFLINE_AFTER_MS) {
-    return "offline";
+    return 'offline';
   }
 
   if (agent?.current_task) {
-    return "active";
+    return 'active';
   }
 
   if (ageMs > IDLE_AFTER_MS) {
-    return "idle";
+    return 'idle';
   }
 
-  return agent?.status === "active" ? "active" : "idle";
+  return agent?.status === 'active' ? 'active' : 'idle';
 }
 
 export async function refreshAgentStatuses(db, project) {
   const filter = project ? { project } : {};
-  const agents = await db.collection("agents").find(filter).toArray();
+  const agents = await db.collection('agents').find(filter).toArray();
   const now = new Date();
 
   await Promise.all(
@@ -35,7 +35,7 @@ export async function refreshAgentStatuses(db, project) {
       const status = deriveAgentStatus(agent, now);
 
       if (status !== agent.status) {
-        await db.collection("agents").updateOne(
+        await db.collection('agents').updateOne(
           { agent_id: agent.agent_id },
           {
             $set: {
@@ -54,9 +54,9 @@ export async function computeTaskPriorityScore(db, task) {
   let dependencyPenalty = 0;
 
   if (dependencies.length) {
-    const completedDependencies = await db.collection("tasks").countDocuments({
+    const completedDependencies = await db.collection('tasks').countDocuments({
       task_id: { $in: dependencies },
-      status: "completed"
+      status: 'completed'
     });
 
     dependencyPenalty = (dependencies.length - completedDependencies) * 20;
@@ -86,22 +86,22 @@ export async function buildTaskSchedule(db, task) {
 
   if (!dependencies.length) {
     return {
-      status: task.blocker ? "blocked" : task.status,
+      status: task.blocker ? 'blocked' : task.status,
       scheduledFor: new Date(),
       schedulingNotes: task.blocker
         ? `Waiting on blocker: ${task.blocker}`
-        : "Ready for execution"
+        : 'Ready for execution'
     };
   }
 
   const dependencyTasks = await db
-    .collection("tasks")
+    .collection('tasks')
     .find({ task_id: { $in: dependencies } })
     .toArray();
 
   const completedDependencyIds = new Set(
     dependencyTasks
-      .filter((dependency) => dependency.status === "completed")
+      .filter((dependency) => dependency.status === 'completed')
       .map((dependency) => dependency.task_id)
   );
   const incompleteDependencies = dependencies.filter(
@@ -110,18 +110,18 @@ export async function buildTaskSchedule(db, task) {
 
   if (incompleteDependencies.length) {
     return {
-      status: "blocked",
+      status: 'blocked',
       scheduledFor: null,
-      schedulingNotes: `Waiting on dependencies: ${incompleteDependencies.join(", ")}`
+      schedulingNotes: `Waiting on dependencies: ${incompleteDependencies.join(', ')}`
     };
   }
 
   return {
-    status: task.blocker ? "blocked" : task.status,
+    status: task.blocker ? 'blocked' : task.status,
     scheduledFor: new Date(),
     schedulingNotes: task.blocker
       ? `Waiting on blocker: ${task.blocker}`
-      : "Dependencies satisfied"
+      : 'Dependencies satisfied'
   };
 }
 
@@ -137,10 +137,10 @@ export async function autoAssignTask(db, task) {
   await refreshAgentStatuses(db, task.project);
 
   const candidateAgents = await db
-    .collection("agents")
+    .collection('agents')
     .find({
       project: task.project,
-      status: { $in: ["active", "idle"] }
+      status: { $in: ['active', 'idle'] }
     })
     .toArray();
 
@@ -154,7 +154,7 @@ export async function autoAssignTask(db, task) {
         return null;
       }
 
-      const statusBoost = agent.status === "idle" ? 5 : 2;
+      const statusBoost = agent.status === 'idle' ? 5 : 2;
       const availabilityBoost = agent.current_task ? 0 : 4;
       const recencyBoost = Math.max(
         0,

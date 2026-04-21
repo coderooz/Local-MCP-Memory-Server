@@ -34,6 +34,18 @@ npm run start:api
 
 # Run syntax checks
 npm run check
+
+# Run linting
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Format code
+npm run format
+
+# Check code formatting
+npm run format:check
 ```
 
 ## Contribution Areas
@@ -70,6 +82,7 @@ npm run check
 ## Development Workflow
 
 1. **Fork and Branch**
+
    ```bash
    git checkout -b feature/your-feature
    git checkout -b fix/issue-description

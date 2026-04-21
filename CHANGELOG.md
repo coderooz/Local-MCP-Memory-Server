@@ -6,6 +6,235 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.5.0] - Release Hardening & Cleanup
+
+### Removed
+- Generated/broken MCP test configs: `mcp-broken-*.project-mcp.json`, `mcp-stdio-test-*.project-mcp.json`, `shim-test-*.project-mcp.json`, `tmp-*.project-mcp.json`
+- Temporary runtime file: `.mcp-runtime.json`
+
+### Documentation Updates
+- Static docs site (docs/) remains GitHub Pages ready
+- reliability.md aligned with chaos testing methodology
+- connection-lifecycle.md reflects current runtime state management
+
+---
+
+## [v2.4.0] - Identity Resolution & Reset System
+
+### Added
+- Standalone release chaos script: `scripts/chaos-test.js`
+  - 50-100 parallel mixed MCP tool calls
+  - controlled invalid-input ratio
+  - retry-aware read scenarios
+  - multi-session isolation verification
+  - structured JSON pass/fail summary output
+
+### Reliability Improvements
+- MCP HTTP call path now includes:
+  - request timeout + abort handling
+  - safe-operation retries only
+  - circuit-breaker fast-fail behavior
+  - health-probe throttling/deduplication under load
+- Tool call input validation hardened against malformed schemas/oversized payloads
+- MCP JSON-RPC error payloads standardized with structured `error.data`
+- Parse-error handling for malformed stdin input now returns JSON-RPC `-32700`
+
+### Observability
+- `/health` now includes session visibility (`active`, `idle`, `total`) alongside uptime, DB, and connection status
+
+### Validation
+- `tests/mcp-stdio-stabilization-test.js` passes
+- `tests/mcp-chaos-resilience-test.js` passes
+- `scripts/chaos-test.js` passes and returns release gate `READY`
+
+---
+
+## [v2.5.0] - Runtime-Free + Config-Driven Architecture
+
+### Critical Architectural Change
+**REMOVED ALL FILE-BASED RUNTIME STATE + NEW CONFIG SYSTEM**
+
+The MCP system now operates completely without runtime files AND uses a unified project-level config.
+
+### What Changed
+- Removed `.mcp-runtime.json` - no longer created or read
+- All runtime state now stored only in-memory
+- Discovery now uses health-based verification instead of file reading
+- Unified `[project].project-mcp.json` as single source of truth
+- Config auto-generated if missing
+
+### Discovery Mechanism
+- Agents scan ports from config `connection.preferredPortRange` (default: 4000-4010)
+- Fallback to config `connection.fallbackPorts` if range scan fails
+- Call `/health` endpoint on each port
+- Validate response includes `service: "MCP"` AND `project` matches config
+- Connect to validated MCP server
+- Cache last-known port in-memory only (5s TTL)
+
+### MCP Health Endpoint
+MCP server returns identity verification in `/health`:
+```json
+{
+  "service": "MCP",
+  "status": "ok",
+  "version": "2.5.0",
+  "project": "local-mcp-memory"
+}
+```
+
+### Connection Strategy
+- Uses config `connection.strategy` (default: "fast-discovery")
+- Config-driven retry settings from `connection.retry`
+- Health check timeout from `connection.healthCheck.timeout`
+- All connection parameters loaded from config
+
+### Multi-Agent Support
+- Multiple agents can independently discover and connect to ONE MCP server
+- No shared filesystem state required
+- Each agent has own in-memory runtime state
+- MCP identity validated before connection
+
+### New Config Structure
+```json
+{
+  "project": { "name": "", "scope": "project", "environment": "development" },
+  "connection": {
+    "strategy": "fast-discovery",
+    "preferredPortRange": [4000, 4010],
+    "fallbackPorts": [3000, 4000, 5000, 8080, 8888],
+    "retry": { "maxRetries": 5, "backoff": "exponential", "baseDelay": 200 }
+  },
+  "agent": { "autoRegister": true, "permissions": { "allowToolExecution": true } },
+  "behavior": { "ignore": [...], "askBefore": [...], "autoApprove": [...] },
+  "features": { "multiAgent": true, "chat": true, "emulator": true, ... }
+}
+```
+
+### Config Validation
+- FORBIDDEN keys: port, pid, runtime, password, secret_, token, etc.
+- Auto-migrates old `mcp.*` config format to new `connection.*` format
+- Falls back to defaults if config invalid
+
+### Files Modified
+- `core/config/runtime-state.js` - in-memory only, uses config for ports
+- `core/config/project-config-loader.js` - complete rewrite with new structure
+- `utils/mcp-port-registry.js` - health-based discovery
+- `utils/mcp-setup-manager.js` - config-driven setup
+- `utils/mcp-connection-manager.js` - config-driven retry/health
+- `server.js` - added `service: "MCP"` to health endpoint
+- `local-mcp-memory.project-mcp.json` - new config format
+
+### Test Results
+All 19 resilience tests pass ✅
+
+---
+
+## [v2.5.2] - Multi-Node Connection Support
+
+### Fixed
+- Multi-node MCP connection issue - enable multiple terminals to connect to single MCP server
+- Isolation layer was incorrectly blocking port discovery across nodes
+- Runtime cache never refreshed - added TTL-based cache invalidation (500ms)
+- PID validation failed for cross-node connections - now port check is primary, PID optional
+- Removed strict PID validation blocking valid connections
+
+### Root Cause
+1. **Cache never refreshed**: Each node cached runtime state forever, so Node B couldn't see Node A's port
+2. **PID check was too strict**: `process.kill(pid, 0)` fails for cross-parent PIDs
+3. **Validation blocked all**: If PID was invalid, connection was rejected even if port was alive
+
+### Architecture Changes
+- Runtime cache now auto-refreshes after 500ms TTL
+- `isValidPID()` no longer blocks connection if port is alive
+- `validateRuntime()` prioritizes port liveness over PID validation
+- Shared `.mcp-runtime.json` is now read fresh across all nodes
+
+---
+
+## [v2.5.1] - Connection Lifecycle & Recovery Fix
+
+### Fixed
+- MCP error -32603: Cannot read properties of null (reading 'port')
+- Added runtime validation layer with `validateRuntime()` function
+- Added `isValidPID()` - validates PID before use
+- Added `isPortAlive()` - validates port is actually listening
+- Added `invalidateRuntime()` - safely clears stale runtime state
+- Implemented automatic runtime cleanup on stale detection
+- Added shutdown hooks to both server.js and mcp-server.js
+- Port registry now validates PID + port liveness before returning
+
+### Root Cause
+Stale `.mcp-runtime.json` contained valid-looking PID/port but process was dead or port not listening. System didn't validate before using.
+
+---
+
+## [v2.5.0] - Configuration Refactoring & Stability
+
+### Critical Architectural Changes
+
+**Configuration System Overhaul**
+
+* Created unified configuration system with single source of truth
+* Implemented `.project-mcp.json` as primary static configuration
+* Split configuration into static config and runtime state:
+  * Static: `[project].project-mcp.json` - version controlled
+  * Runtime: `.mcp-runtime.json` - auto-generated, git-ignored
+* Added `core/config/project-config-loader.js` for centralized config loading
+* Added `core/config/runtime-state.js` for runtime state management
+* Configuration validation with forbidden keys (no secrets in config)
+* Default fallback when config missing
+
+**Port & Connection System Stabilization**
+
+* Fixed null port crashes - eliminated `Cannot read properties of null (reading 'port')`
+* Normalized port return types from objects to number|null
+* Added `ensurePort()` validation utility
+* Implemented `waitForPort()` with exponential backoff retry
+* Implemented `waitForMcpServer()` with health check
+* Removed duplicate `discoverPort()` methods
+* Port registry now returns clean number types
+
+**Concurrency & Reliability Hardening**
+
+* Task assignment now atomic with version check
+* Task ownership validation - only assigned agent can update
+* Task retry with backoff (max 3 attempts)
+* Message ordering with sequence counter
+* Message idempotency with `idempotencyKey`
+* Agent isolation enforced at project level
+
+**Null Safety**
+
+* All port getters are null-safe
+* Connection manager handles missing port gracefully
+* Fallback port discovery on file missing
+* Runtime state recovery on file corruption
+
+### New Features
+
+* `local-mcp-memory.project-mcp.json` - new static config format
+* `.mcp-runtime.json` - runtime state tracking
+* `ensurePort()` - strict port validation
+* `waitForPort()` - retry-enabled port discovery
+* `waitForMcpServer()` - health check with retry
+* Runtime state functions: `setMcpRunning()`, `setMcpStopped()`, `isMcpRunning()`
+
+### Changed
+
+* Connection manager now reads from runtime state
+* Port registry returns number types only
+* Task service uses atomic operations
+* Chat service includes sequence ordering
+
+### Security Improvements
+
+* No database credentials in config files
+* No static ports hardcoded
+* Agent isolation enforced
+* Input sanitization validated
+
+---
+
 ## [v2.4.0] - Identity Resolution & Reset System
 
 ### Critical Fixes

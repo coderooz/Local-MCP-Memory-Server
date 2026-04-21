@@ -1,4 +1,4 @@
-import { ResourceLockModel, normalizeMemory } from "../mcp.model.js";
+import { ResourceLockModel, normalizeMemory } from '../core/mcp/models.js';
 
 function toDate(value, fallback = null) {
   if (!value) {
@@ -11,14 +11,14 @@ function toDate(value, fallback = null) {
 
 export async function cleanupExpiredLocks(db, project) {
   const filter = {
-    expiresAt: { $lte: new Date() }
+    expiresAt: { $lte: new Date() },
   };
 
   if (project) {
     filter.project = project;
   }
 
-  await db.collection("resource_locks").deleteMany(filter);
+  await db.collection('resource_locks').deleteMany(filter);
 }
 
 export async function listResourceLocks(db, { project, resource } = {}) {
@@ -34,7 +34,8 @@ export async function listResourceLocks(db, { project, resource } = {}) {
     filter.resource = resource;
   }
 
-  return db.collection("resource_locks")
+  return db
+    .collection('resource_locks')
     .find(filter)
     .sort({ expiresAt: 1, createdAt: -1 })
     .toArray();
@@ -42,23 +43,13 @@ export async function listResourceLocks(db, { project, resource } = {}) {
 
 export async function acquireResourceLock(
   db,
-  {
-    project,
-    agent,
-    resource,
-    expiresInMs = 300000,
-    metadata = {}
-  }
+  { project, agent, resource, expiresInMs = 300000, metadata = {} }
 ) {
   await cleanupExpiredLocks(db, project);
 
-  const existingLocks = await db.collection("resource_locks")
-    .find({ project, resource })
-    .toArray();
+  const existingLocks = await db.collection('resource_locks').find({ project, resource }).toArray();
 
-  const conflictingLocks = existingLocks.filter(
-    (lock) => lock.locked_by !== agent
-  );
+  const conflictingLocks = existingLocks.filter((lock) => lock.locked_by !== agent);
 
   if (conflictingLocks.length) {
     return {
@@ -69,69 +60,89 @@ export async function acquireResourceLock(
           `${resource} is already locked by ${lock.locked_by} until ${new Date(
             lock.expiresAt
           ).toISOString()}`
-      )
+      ),
+    };
+  }
+
+  const existingLockByAgent = existingLocks.find((lock) => lock.locked_by === agent);
+
+  if (existingLockByAgent) {
+    return {
+      acquired: true,
+      lock: existingLockByAgent,
+      warnings: [`Lock already held by ${agent} for ${resource}`],
     };
   }
 
   const nextLock = new ResourceLockModel({
     agent,
     project,
-    scope: "project",
+    scope: 'project',
     resource,
     locked_by: agent,
     expiresAt: new Date(Date.now() + Number(expiresInMs || 300000)),
-    metadata
+    metadata,
   });
 
-  await db.collection("resource_locks").updateOne(
-    { project, resource, locked_by: agent },
-    { $set: normalizeMemory(nextLock) },
-    { upsert: true }
-  );
+  try {
+    await db.collection('resource_locks').insertOne(normalizeMemory(nextLock));
+  } catch (error) {
+    if (error.code === 11000) {
+      return {
+        acquired: false,
+        lock: null,
+        warnings: [`Failed to acquire lock: ${resource} may be locked by another agent`],
+      };
+    }
+    throw error;
+  }
 
-  const lock = await db.collection("resource_locks").findOne({
+  const lock = await db.collection('resource_locks').findOne({
     project,
     resource,
-    locked_by: agent
+    locked_by: agent,
   });
 
   return {
     acquired: true,
     lock,
-    warnings: []
+    warnings: [],
   };
 }
 
 export async function releaseResourceLock(db, { project, resource, agent }) {
   await cleanupExpiredLocks(db, project);
 
-  const result = await db.collection("resource_locks").deleteOne({
+  const existingLock = await db.collection('resource_locks').findOne({ project, resource });
+
+  if (!existingLock) {
+    return { released: false };
+  }
+
+  if (existingLock.locked_by !== agent) {
+    return {
+      released: false,
+      error: `Lock held by ${existingLock.locked_by}, cannot be released by ${agent}`,
+    };
+  }
+
+  const result = await db.collection('resource_locks').deleteOne({
     project,
     resource,
-    locked_by: agent
+    locked_by: agent,
   });
 
   return {
-    released: result.deletedCount > 0
+    released: result.deletedCount > 0,
   };
 }
 
 export async function evaluateCollaborationRisk(
   db,
-  {
-    project,
-    actor,
-    resource,
-    relatedTaskId,
-    currentDocument,
-    expectedUpdatedAt,
-    expectedVersion
-  }
+  { project, actor, resource, relatedTaskId, currentDocument, expectedUpdatedAt, expectedVersion }
 ) {
   const warnings = [];
-  const activeLocks = resource
-    ? await listResourceLocks(db, { project, resource })
-    : [];
+  const activeLocks = resource ? await listResourceLocks(db, { project, resource }) : [];
   const foreignLocks = activeLocks.filter((lock) => lock.locked_by !== actor);
 
   for (const lock of foreignLocks) {
@@ -145,9 +156,9 @@ export async function evaluateCollaborationRisk(
   let relatedTask = null;
 
   if (relatedTaskId) {
-    relatedTask = await db.collection("tasks").findOne({
+    relatedTask = await db.collection('tasks').findOne({
       project,
-      task_id: relatedTaskId
+      task_id: relatedTaskId,
     });
 
     if (relatedTask?.assigned_to && relatedTask.assigned_to !== actor) {
@@ -183,6 +194,6 @@ export async function evaluateCollaborationRisk(
   return {
     warnings,
     activeLocks,
-    relatedTask
+    relatedTask,
   };
 }

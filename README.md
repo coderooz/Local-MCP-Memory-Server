@@ -1,15 +1,24 @@
 # Local MCP Memory Server
 
+![GitHub stars](https://img.shields.io/github/stars/coderooz/Local-MCP-Memory-Server)
+![GitHub forks](https://img.shields.io/github/forks/coderooz/Local-MCP-Memory-Server)
+![GitHub issues](https://img.shields.io/github/issues/coderooz/Local-MCP-Memory-Server)
+![GitHub closed issues](https://img.shields.io/github/issues-closed/coderooz/Local-MCP-Memory-Server)
+![License](https://img.shields.io/github/license/coderooz/Local-MCP-Memory-Server)
+![Node.js Version](https://img.shields.io/node/v/local-mcp-memory)
+![npm Version](https://img.shields.io/npm/v/local-mcp-memory)
+![GitHub package.json version](https://img.shields.io/github/package-json/v/coderooz/Local-MCP-Memory-Server)
+[![codecov](https://codecov.io/gh/coderooz/Local-MCP-Memory-Server/branch/main/graph/badge.svg)](https://codecov.io/gh/coderooz/Local-MCP-Memory-Server)
+[![CI](https://github.com/coderooz/Local-MCP-Memory-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/coderooz/Local-MCP-Memory-Server/actions)
+[![CodeFactor](https://www.codefactor.io/repository/github/coderooz/Local-MCP-Memory-Server/badge)](https://www.codefactor.io/repository/github/coderooz/Local-MCP-Memory-Server)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+
 Local MCP Memory Server is a MongoDB-backed coordination layer for MCP clients that need more than isolated memory. It gives agents and humans a shared system for persistent context, project descriptors, tasks, issues, activity tracking, soft locks, and collaboration-safe state updates.
 
 Official Docs: https://coderooz.github.io/Local-MCP-Memory-Server/
 
-![GitHub stars](https://img.shields.io/github/stars/coderooz/Local-MCP-Memory-Server)
-![Issues](https://img.shields.io/github/issues/coderooz/Local-MCP-Memory-Server)
-![License](https://img.shields.io/github/license/coderooz/Local-MCP-Memory-Server)
-
 ---
-
 
 ## Overview
 
@@ -83,6 +92,12 @@ npm start
 node /absolute/path/to/mcp-shim.js
 ```
 
+6. Run the production chaos gate:
+
+```bash
+node scripts/chaos-test.js
+```
+
 ## Usage Summary
 
 Typical system-mode flow:
@@ -116,6 +131,7 @@ The `docs/` folder contains the GitHub Pages site and now covers:
 - activity tracking and soft-lock collaboration
 - API and MCP tool reference
 - human + agent collaboration guidelines
+- reliability model and chaos validation (`docs/reliability.md`)
 
 Enable GitHub Pages on the repository and use `/docs` as the source to publish it.
 
@@ -126,6 +142,19 @@ Run:
 ```bash
 npm test
 ```
+
+Run release chaos validation:
+
+```bash
+npm run chaos:test
+```
+
+The script prints a structured JSON report with:
+- protocol integrity (`stdio` JSON-RPC purity)
+- tool discovery and core-tool execution checks
+- multi-session isolation check
+- success/failure rates, error types, response-time stats
+- explicit `PASS`/`FAIL` release gate
 
 ## License
 

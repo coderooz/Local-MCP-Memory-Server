@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 
-import path from "path";
-import { spawn } from "child_process";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
+import path from 'path';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 import {
   findProjectRoot,
   resolveProjectIdentity
-} from "./utils/projectIdentity.js";
+} from './utils/projectIdentity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const initialProjectRoot = findProjectRoot(process.cwd());
 
 dotenv.config({
-  path: path.join(initialProjectRoot, ".env"),
+  path: path.join(initialProjectRoot, '.env'),
   quiet: true
 });
 
@@ -33,15 +33,15 @@ if (!process.env.MCP_PROJECT_ROOT) {
 }
 
 if (!process.env.MCP_SCOPE) {
-  process.env.MCP_SCOPE = "project";
+  process.env.MCP_SCOPE = 'project';
 }
 
 const child = spawn(
   process.execPath,
-  [path.join(__dirname, "mcp-server.js")],
+  [path.join(__dirname, 'mcp-server.js')],
   {
     env: process.env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ['pipe', 'pipe', 'pipe']
   }
 );
 
@@ -49,10 +49,10 @@ process.stdin.pipe(child.stdin);
 child.stdout.pipe(process.stdout);
 child.stderr.pipe(process.stderr);
 
-process.stdin.on("error", () => {});
-child.stdin.on("error", () => {});
+process.stdin.on('error', () => {});
+child.stdin.on('error', () => {});
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     if (!child.killed) {
       child.kill(signal);
@@ -60,7 +60,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-child.on("exit", (code, signal) => {
+child.on('exit', (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal);
     return;
@@ -69,7 +69,7 @@ child.on("exit", (code, signal) => {
   process.exit(code ?? 0);
 });
 
-child.on("error", (error) => {
-  console.error("Failed to start MCP shim child process:", error);
+child.on('error', (error) => {
+  process.stderr.write(`Failed to start MCP shim child process: ${error?.message || error}\n`);
   process.exit(1);
 });

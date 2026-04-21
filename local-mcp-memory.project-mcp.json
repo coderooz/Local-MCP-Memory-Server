@@ -1,0 +1,196 @@
+{
+  "project": {
+    "name": "local-mcp-memory",
+    "scope": "project",
+    "environment": "development"
+  },
+  "connection": {
+    "strategy": "runtime-first",
+    "preferredPortRange": [47000, 47020],
+    "fallbackPorts": [47000, 47001, 47005, 47010, 47020],
+    "retry": {
+      "maxRetries": 5,
+      "backoff": "exponential",
+      "baseDelay": 200,
+      "maxDelay": 3200
+    },
+    "timeout": 30000,
+    "maxConcurrentRequests": 10,
+    "healthCheck": {
+      "enabled": true,
+      "timeout": 5000,
+      "retries": 3,
+      "interval": 30000
+    }
+  },
+  "agent": {
+    "defaultAgent": "mcp-orchestrator",
+    "autoRegister": true,
+    "heartbeatInterval": 30000,
+    "permissions": {
+      "allowToolExecution": true
+    },
+    "behavior": {
+      "autoOptimize": false,
+      "allowSelfModification": false,
+      "maxRetainedContexts": 100,
+      "autoMemoryCleanup": true
+    }
+  },
+  "behavior": {
+    "ignore": [
+      "node_modules/",
+      ".git/",
+      "logs/",
+      "dist/",
+      "build/",
+      ".next/",
+      "coverage/",
+      "*.log"
+    ],
+    "askBefore": [
+      "destructive_actions"
+    ],
+    "autoApprove": [
+      "read_operations"
+    ]
+  },
+  "features": {
+    "multiAgent": true,
+    "chat": true,
+    "messaging": true,
+    "feedback": true,
+    "emulator": true,
+    "redis": false,
+    "browser": false,
+    "knowledgeBase": false,
+    "memory": {
+      "enabled": true,
+      "optimization": true,
+      "versioning": true
+    },
+    "tasks": {
+      "concurrency": "atomic",
+      "retry": true,
+      "maxRetries": 3
+    }
+  },
+  "redis": {
+    "enabled": false,
+    "url": "redis://localhost:6379",
+    "connection": {
+      "maxRetries": 3,
+      "retryDelay": 1000,
+      "connectTimeout": 5000
+    },
+    "keyPrefix": "mcp:",
+    "ttl": 3600,
+    "fallbackToMemory": true
+  },
+  "browser": {
+    "enabled": false,
+    "headless": true,
+    "args": [
+      "--no-sandbox",
+      "--disable-setuid-sandbox"
+    ],
+    "timeout": 30000,
+    "screenshotEnabled": true,
+    "navigation": {
+      "timeout": 30000,
+      "waitUntil": "networkidle"
+    },
+    "security": {
+      "allowedDomains": ["localhost", "127.0.0.1"],
+      "blockedDomains": ["file://", "chrome://", "about:"],
+      "maxConcurrentSessions": 5
+    }
+  },
+  "knowledgeBase": {
+    "enabled": false,
+    "storage": "mongodb",
+    "redisBacked": false,
+    "indexing": {
+      "enabled": true,
+      "fields": ["title", "content", "tags", "type"]
+    },
+    "search": {
+      "limit": 10,
+      "fuzzyMatch": true
+    }
+  },
+  "security": {
+    "inputSanitization": true,
+    "agentIsolation": true,
+    "idempotency": true
+  },
+  "logging": {
+    "level": "minimal",
+    "errorsOnly": true,
+    "enabled": true
+  },
+  "rules": {
+    "ignore": [
+      "node_modules/",
+      ".git/",
+      "dist/",
+      "build/",
+      ".next/",
+      "coverage/",
+      "*.log"
+    ],
+    "protected": [
+      "core/",
+      "infrastructure/"
+    ],
+    "scanExtensions": [
+      ".js",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".json",
+      ".md",
+      ".yml",
+      ".yaml"
+    ]
+  },
+  "execution": {
+    "parallelAgents": true,
+    "maxAgents": 10,
+    "agentTimeout": 60000
+  },
+  "setup": {
+    "autoConfigure": true,
+    "autoHeal": true,
+    "maxSetupAttempts": 3,
+    "requiredEnvVars": [
+      "MCP_SCOPE",
+      "MCP_PROJECT"
+    ],
+    "optionalEnvVars": [
+      "MCP_AGENT",
+      "MCP_SERVER_URL",
+      "NODE_ENV",
+      "LOG_LEVEL"
+    ]
+  },
+  "plugins": {
+    "emulator": {
+      "enabled": true,
+      "autoDetect": true
+    },
+    "redis": {
+      "enabled": false,
+      "autoLoad": true
+    },
+    "browser": {
+      "enabled": false,
+      "autoLoad": true
+    },
+    "knowledgeBase": {
+      "enabled": false,
+      "autoLoad": true
+    }
+  },
+  "policies": {}
+}

@@ -1,0 +1,146 @@
+{
+  "project": {
+    "name": "vscode",
+    "scope": "project",
+    "environment": "development"
+  },
+  "connection": {
+    "strategy": "fast-discovery",
+    "preferredPortRange": [
+      4000,
+      4010
+    ],
+    "fallbackPorts": [
+      3000,
+      4000,
+      5000,
+      8080,
+      8888
+    ],
+    "retry": {
+      "maxRetries": 5,
+      "backoff": "exponential",
+      "baseDelay": 200,
+      "maxDelay": 3200
+    },
+    "timeout": 30000,
+    "maxConcurrentRequests": 10,
+    "healthCheck": {
+      "enabled": true,
+      "timeout": 5000,
+      "retries": 3,
+      "interval": 30000
+    }
+  },
+  "agent": {
+    "defaultAgent": "mcp-orchestrator",
+    "autoRegister": true,
+    "heartbeatInterval": 30000,
+    "permissions": {
+      "allowToolExecution": true
+    },
+    "behavior": {
+      "autoOptimize": true,
+      "allowSelfModification": false,
+      "maxRetainedContexts": 100,
+      "autoMemoryCleanup": true
+    }
+  },
+  "behavior": {
+    "ignore": [
+      "node_modules/",
+      ".git/",
+      "logs/",
+      "dist/",
+      "build/",
+      ".next/",
+      "coverage/",
+      "*.log"
+    ],
+    "askBefore": [
+      "destructive_actions"
+    ],
+    "autoApprove": [
+      "read_operations"
+    ]
+  },
+  "features": {
+    "multiAgent": true,
+    "chat": true,
+    "messaging": true,
+    "feedback": true,
+    "emulator": true,
+    "memory": {
+      "enabled": true,
+      "optimization": true,
+      "versioning": true
+    },
+    "tasks": {
+      "concurrency": "atomic",
+      "retry": true,
+      "maxRetries": 3
+    }
+  },
+  "security": {
+    "inputSanitization": true,
+    "agentIsolation": true,
+    "idempotency": true
+  },
+  "logging": {
+    "level": "minimal",
+    "errorsOnly": true,
+    "enabled": true
+  },
+  "rules": {
+    "ignore": [
+      "node_modules/",
+      ".git/",
+      "dist/",
+      "build/",
+      ".next/",
+      "coverage/",
+      "*.log"
+    ],
+    "protected": [
+      "core/",
+      "infrastructure/"
+    ],
+    "scanExtensions": [
+      ".js",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".json",
+      ".md",
+      ".yml",
+      ".yaml"
+    ]
+  },
+  "execution": {
+    "parallelAgents": true,
+    "maxAgents": 10,
+    "agentTimeout": 60000
+  },
+  "setup": {
+    "autoConfigure": true,
+    "autoHeal": true,
+    "maxSetupAttempts": 3,
+    "requiredEnvVars": [
+      "MCP_SCOPE",
+      "MCP_PROJECT"
+    ],
+    "optionalEnvVars": [
+      "MCP_AGENT",
+      "MCP_SERVER_URL",
+      "NODE_ENV",
+      "LOG_LEVEL"
+    ]
+  },
+  "plugins": {
+    "emulator": {
+      "enabled": true,
+      "autoDetect": true
+    }
+  },
+  "policies": {}
+}

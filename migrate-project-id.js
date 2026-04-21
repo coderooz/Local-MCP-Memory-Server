@@ -1,43 +1,43 @@
 #!/usr/bin/env node
 
-import path from "path";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
-import { MongoClient } from "mongodb";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import { MongoClient } from 'mongodb';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config({
-  path: path.join(__dirname, ".env"),
+  path: path.join(__dirname, '.env'),
   quiet: true
 });
 
-const fromProject = process.argv[2] || "vscode";
+const fromProject = process.argv[2] || 'vscode';
 const toProject = process.argv[3] || process.env.MCP_PROJECT;
-const DB_NAME = process.env.MONGO_DB_NAME || "mcp_memory";
+const DB_NAME = process.env.MONGO_DB_NAME || 'mcp_memory';
 
 if (!process.env.MONGO_URI) {
-  console.error("Missing MONGO_URI in .env");
+  console.error('Missing MONGO_URI in .env');
   process.exit(1);
 }
 
 if (!toProject) {
   console.error(
-    "Missing target project identifier. Set MCP_PROJECT in .env or pass it as the second argument."
+    'Missing target project identifier. Set MCP_PROJECT in .env or pass it as the second argument.'
   );
   process.exit(1);
 }
 
 const client = new MongoClient(process.env.MONGO_URI);
 const collections = [
-  "contexts",
-  "actions",
-  "sessions",
-  "agents",
-  "tasks",
-  "messages",
-  "project_map"
+  'contexts',
+  'actions',
+  'sessions',
+  'agents',
+  'tasks',
+  'messages',
+  'project_map'
 ];
 
 async function main() {
@@ -63,17 +63,17 @@ async function main() {
     });
   }
 
-  const logResult = await db.collection("logs").updateMany(
-    { "context.project": fromProject },
+  const logResult = await db.collection('logs').updateMany(
+    { 'context.project': fromProject },
     {
       $set: {
-        "context.project": toProject
+        'context.project': toProject
       }
     }
   );
 
   results.push({
-    collection: "logs.context.project",
+    collection: 'logs.context.project',
     matched: logResult.matchedCount,
     modified: logResult.modifiedCount
   });

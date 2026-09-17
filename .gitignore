@@ -169,3 +169,6 @@ logs/
 .mcp-runtime.json
 .mcp-port
 .mcp-port.lock
+
+# OpenCode workspace (contains node_modules)
+.opencode/

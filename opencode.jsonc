@@ -1,0 +1,197 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "deepseek-v4-flash-free",
+
+  "instructions": [
+    "AGENTS.md",
+    "BEHAVIOR.md"
+  ],
+
+  "agent": {
+    "project-builder": {
+      "description": "Orchestrates the full project build lifecycle using sub-agents",
+      "model": "deepseek-v4-flash-free",
+      "permission": {
+        "task": {
+          "*": "deny",
+          "analyzer": "allow",
+          "planner": "allow",
+          "validator": "allow",
+          "coder": "allow",
+          "code-reviewer": "allow",
+          "tester": "allow",
+          "db-specialist": "allow",
+          "security-auditor": "allow",
+          "documenter": "allow",
+          "setup": "allow",
+          "tracker": "allow",
+          "doc-validator": "allow",
+          "watchdog": "allow",
+          "issue-handler": "allow"
+        }
+      }
+    },
+    "issue-handler": {
+      "description": "Manages GitHub issues and pull requests via gh CLI. Can create, read, update, close, and list issues; create and review PRs.",
+      "mode": "subagent",
+      "temperature": 0.2,
+      "steps": 30,
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "gh issue *": "allow",
+          "gh pr *": "allow",
+          "gh repo *": "allow",
+          "gh api *": "allow",
+          "gh search *": "allow",
+          "gh label *": "allow",
+          "gh release *": "allow",
+          "git *": "allow"
+        },
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "todowrite": "allow",
+        "edit": "deny"
+      }
+    }
+  },
+
+  "command": {
+    "start": {
+      "template": "Start the MCP memory server: npm start",
+      "description": "Start MCP server",
+      "agent": "project-builder",
+      "subtask": false
+    },
+    "lint": {
+      "template": "Run ESLint: npm run lint. Fix any issues.",
+      "description": "Run ESLint",
+      "agent": "code-reviewer",
+      "subtask": true
+    },
+    "test": {
+      "template": "Run tests: npm test. Analyze and fix failures.",
+      "description": "Run tests",
+      "agent": "tester",
+      "subtask": true
+    },
+    "validate-docs": {
+      "template": "Validate the MCP server implementation against the offline docs at C:\\Code_Works\\Docs\\ (mcp/, mongo-docs/). Cross-reference MCP tool/resource/prompt definitions with the protocol spec and DB patterns with MongoDB docs.",
+      "description": "Validate against docs",
+      "agent": "doc-validator",
+      "subtask": true
+    },
+    "build:project": {
+      "template": "Run the full project build pipeline with parallel execution groups:\nSEQUENTIAL GROUP 1: analyzer → tracker → watchdog\nSEQUENTIAL GROUP 2: planner → tracker → watchdog\nSEQUENTIAL GROUP 3: validator → tracker → watchdog\nSEQUENTIAL GROUP 4: coder → tracker → watchdog\nPARALLEL GROUP 5: code-reviewer + db-specialist → tracker → watchdog\nSEQUENTIAL GROUP 6: validator → tracker → watchdog\nPARALLEL GROUP 7: tester + security-auditor → tracker → watchdog\nPARALLEL GROUP 8: documenter + setup → project-builder",
+      "description": "Full project build pipeline (parallel groups + watchdog)",
+      "agent": "project-builder",
+      "subtask": false
+    },
+    "build:analyze": {
+      "template": "Run the analyzer sub-agent to analyze the current codebase architecture and patterns",
+      "description": "Analyze architecture",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:plan": {
+      "template": "Run the planner sub-agent to create an implementation plan based on analysis",
+      "description": "Create implementation plan",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:code": {
+      "template": "Run the coder sub-agent to implement planned changes",
+      "description": "Implement code changes",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:test": {
+      "template": "Run the tester sub-agent to write and execute tests",
+      "description": "Write and run tests",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:validate": {
+      "template": "Run the validator sub-agent to validate architecture plans or code quality",
+      "description": "Validate plans or code",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:review-code": {
+      "template": "Run the code-reviewer sub-agent to review code quality and MCP compliance",
+      "description": "Review code quality",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:audit-security": {
+      "template": "Run the security-auditor sub-agent to audit MCP protocol security and sanitization",
+      "description": "Audit security",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:db-review": {
+      "template": "Run the db-specialist sub-agent to review MongoDB indexes and query patterns",
+      "description": "Review MongoDB patterns",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:document": {
+      "template": "Run the documenter sub-agent to update project documentation",
+      "description": "Update documentation",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:setup": {
+      "template": "Run the setup sub-agent to initialize project infrastructure and dependencies",
+      "description": "Setup project infrastructure",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:track": {
+      "template": "Run the tracker sub-agent to update project progress and milestones",
+      "description": "Track project progress",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:watch": {
+      "template": "Run the watchdog sub-agent to check agent health, detect task paralysis, check git staleness, and enforce phase timeouts",
+      "description": "Run watchdog health check",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "build:phase": {
+      "template": "Run a specific build phase. Usage: build:phase <phase-name>. Phases: analyze, plan, validate, code, review-code, test, audit-security, db-review, document, setup, track, watch",
+      "description": "Run specific build phase",
+      "agent": "project-builder",
+      "subtask": true
+    },
+    "gh-issue": {
+      "template": "Manage GitHub issues: $ARGUMENTS. Use gh issue list/gh issue view/gh issue create/gh issue close/gh issue comment as needed. Return the results clearly.",
+      "description": "Manage GitHub issues via gh CLI",
+      "agent": "issue-handler",
+      "subtask": true
+    },
+    "gh-pr": {
+      "template": "Manage GitHub pull requests: $ARGUMENTS. Use gh pr list/gh pr view/gh pr create/gh pr checkout/gh pr review as needed. Return the results clearly.",
+      "description": "Manage GitHub pull requests via gh CLI",
+      "agent": "issue-handler",
+      "subtask": true
+    }
+  },
+
+  "formatter": {
+    "prettier": {
+      "extensions": [".js", ".json", ".css", ".md", ".yaml", ".yml"]
+    }
+  },
+
+  "lsp": {
+    "typescript": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".js"]
+    }
+  }
+}

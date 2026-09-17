@@ -634,6 +634,29 @@ export function getSystemTools() {
   ];
 }
 
+export function getNotificationTools() {
+  return [
+    {
+      name: 'play_notification_sound',
+      description:
+        'Play the configured notification sound to attract the user attention when input or review is needed.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          repeat: {
+            type: 'integer',
+            description: 'Number of times to play the sound, from 1 to 5. Defaults to 1.'
+          },
+          dryRun: {
+            type: 'boolean',
+            description: 'Check that the notification sound is available without playing it.'
+          }
+        }
+      }
+    }
+  ];
+}
+
 export function getAllTools() {
   return [
     ...getMemoryTools(),
@@ -645,6 +668,7 @@ export function getAllTools() {
     ...getFeedbackTools(),
     ...getChatTools(),
     ...getEmulatorTools(),
-    ...getSystemTools()
+    ...getSystemTools(),
+    ...getNotificationTools()
   ];
 }

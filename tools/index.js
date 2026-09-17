@@ -3,9 +3,11 @@ import * as browserTools from './browserTools.js';
 import { getEmulatorTools } from './emulatorTools.js';
 import { getFeedbackTools } from './feedbackTools.js';
 import { getChatTools } from './chatTools.js';
+import { getNotificationTools, playNotificationSound } from './notificationTools.js';
 import { getAllTools as getDomainTools } from '../src/interfaces/mcp-tools/tool-definitions.js';
 const toolHandlers = {
   store_context: storeContext,
+  play_notification_sound: playNotificationSound,
   open_browser: browserTools.openBrowser,
   close_browser: browserTools.closeBrowser,
   navigate_to_url: browserTools.navigateToUrl,
@@ -335,7 +337,8 @@ export function getTools() {
     },
     ...getEmulatorTools(),
     ...getFeedbackTools(),
-    ...getChatTools()
+    ...getChatTools(),
+    ...getNotificationTools()
   ];
 
   return baseTools;

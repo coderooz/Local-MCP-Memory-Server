@@ -10,6 +10,7 @@ import { startMemoryServer } from "./startMemoryServer.js";
 import { GLOBAL_AGENT_INSTRUCTION } from "./agent-instruction.js";
 import { resolveProjectIdentity } from "./utils/projectIdentity.js";
 import * as browserTools from "./tools/browserTools.js";
+import { getNotificationTools, playNotificationSound } from "./tools/notificationTools.js";
 import { successResponse, errorResponse, toMCPResponse, createMCPContentResponse, STATUS_CODES } from "./shared/utils/responseFormatter.js";
 import { setMcpStopped, invalidateRuntime, validatePortWithHealth } from "./core/config/runtime-state.js";
 import { getIntegrationTools, handleIntegrationTool } from "./mcp-integration-tools.js";
@@ -1538,7 +1539,8 @@ function getTools() {
         },
         required: ["sessionId", "cookies"]
       }
-    }
+    },
+    ...getNotificationTools()
   ];
 }
 
@@ -2617,6 +2619,23 @@ rl.on("line", (line) => {
         );
         return respond(request.id, {
           content: [{ type: "text", text: `Waited ${data.waited}ms` }]
+        });
+      }
+
+      if (name === "play_notification_sound") {
+        const data = unwrapBrowserToolData(
+          await playNotificationSound({
+            repeat: args.repeat,
+            dryRun: args.dryRun
+          })
+        );
+        return respond(request.id, {
+          content: [
+            {
+              type: "text",
+              text: `${data.message}\nSound: ${data.soundPath}\nRepeat: ${data.repeat}`
+            }
+          ]
         });
       }
 

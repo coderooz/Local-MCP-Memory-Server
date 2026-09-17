@@ -171,4 +171,5 @@ logs/
 .mcp-port.lock
 
 # OpenCode workspace (contains node_modules)
-.opencode/
+.opencode/*
+!.opencode/reference/

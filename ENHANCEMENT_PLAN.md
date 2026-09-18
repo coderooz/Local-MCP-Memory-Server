@@ -282,6 +282,35 @@ Phase 1 must complete first (auth depends on DB). Phases 2-3 can partially overl
 
 ---
 
+## Phase 7: Packaging (v4.0.0) — NPM Package
+
+**Milestone:** v4.0.0 — NPM Package
+**Priority:** High
+**Timeline:** 1-2 weeks
+
+#### Issues to Create:
+
+1. `feat(package): Restructure project as publishable NPM package`
+2. `feat(package): Create CLI entry point with argument parsing`
+3. `feat(package): Create programmatic API for embedding`
+4. `feat(package): Add zero-config local setup`
+5. `feat(package): Add global/local install support`
+6. `test(package): Write package installation and CLI tests`
+7. `docs(package): Create package documentation and examples`
+8. `feat(package): Set up CI/CD for NPM publishing`
+9. `feat(package): Add package validation and linting`
+10. `feat(package): Add TypeScript type definitions`
+
+#### Technical Details:
+
+- Package name: `@coderooz/local-mcp-memory` (or `local-mcp-memory`)
+- CLI binary: `mcp-memory`
+- Exports: programmatic API + CLI
+- Zero-config: auto-create data dir, auto-generate keys
+- Publish to npm on version tags
+
+---
+
 ## Success Metrics
 
 - [ ] MongoDB dependency removed (Phase 1)
@@ -291,6 +320,8 @@ Phase 1 must complete first (auth depends on DB). Phases 2-3 can partially overl
 - [ ] CLI interactive mode working (Phase 4)
 - [ ] Search latency < 50ms for 10K contexts (Phase 5)
 - [ ] Prometheus metrics exposed (Phase 6)
+- [ ] Published to npm (Phase 7)
+- [ ] npx mcp-memory works (Phase 7)
 
 ---
 
@@ -302,15 +333,16 @@ Phase 1 must complete first (auth depends on DB). Phases 2-3 can partially overl
 | Auth breaking changes     | Medium      | High   | Version API, migration path       |
 | UI complexity             | Medium      | Medium | Start with read-only dashboard    |
 | Embedding model size      | Low         | Medium | Use small models, optional        |
+| NPM naming conflicts      | Low         | Medium | Use scoped package name           |
 
 ---
 
 ## Next Actions
 
-1. Create GitHub milestones for Phases 1-6
-2. Create GitHub issues for Phase 1 (highest priority)
+1. ~~Create GitHub milestones for Phases 1-7~~ ✅
+2. ~~Create GitHub issues for all phases~~ ✅
 3. Begin Phase 1 implementation after user approval
-4. Store this plan in MCP memory for cross-session persistence
+4. ~~Store this plan in MCP memory for cross-session persistence~~ ✅
 
 ---
 

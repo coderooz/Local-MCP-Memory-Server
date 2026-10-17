@@ -1,10 +1,17 @@
-import { MongoClient } from 'mongodb';
+/**
+ * Database Connection Module (SQLite)
+ *
+ * Drop-in replacement for MongoDB connection.
+ * Maintains the same API: connect(), disconnect(), getDb(), getCollection(), isConnected().
+ * All existing modules that import from this file continue to work unchanged.
+ */
 
-let client = null;
+import { initializeDatabase, getDatabase, disconnectDatabase } from './sqlite/index.js';
+
 let db = null;
 let startupPromise = null;
 
-export const DB_NAME = process.env.MONGO_DB_NAME || 'mcp_memory';
+export const DB_NAME = 'mcp-memory';
 
 export function getDb() {
   if (!db) {
@@ -13,17 +20,20 @@ export function getDb() {
   return db;
 }
 
-export async function connect(uri = process.env.MONGO_URI) {
+export async function connect(dbPath) {
   if (db) {
-    return { client, db };
+    return { client: null, db };
   }
 
   if (!startupPromise) {
     startupPromise = (async () => {
-      client = new MongoClient(uri);
-      await client.connect();
-      db = client.db(DB_NAME);
-      return { client, db };
+      try {
+        db = await initializeDatabase(dbPath);
+        return { client: null, db };
+      } catch (error) {
+        console.error('[database] Failed to initialize SQLite:', error.message);
+        throw error;
+      }
     })();
   }
 
@@ -31,9 +41,8 @@ export async function connect(uri = process.env.MONGO_URI) {
 }
 
 export async function disconnect() {
-  if (client) {
-    await client.close();
-    client = null;
+  if (db) {
+    await disconnectDatabase();
     db = null;
     startupPromise = null;
   }

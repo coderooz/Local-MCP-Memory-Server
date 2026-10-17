@@ -22,14 +22,22 @@ console.log('ROOT:', PROJECT_ROOT);
 console.log('='.repeat(60));
 
 async function loadProjectConfig() {
-  const { getProjectConfig, getConfigValue } = await import('../core/config/project-config-loader.js');
+  const { getProjectConfig, getConfigValue } =
+    await import('../core/config/project-config-loader.js');
 
   const config = getProjectConfig();
-  console.log('\n[CONFIG] Loaded:', JSON.stringify({
-    project: config.project,
-    mcp: config.mcp,
-    agents: config.agent
-  }, null, 2));
+  console.log(
+    '\n[CONFIG] Loaded:',
+    JSON.stringify(
+      {
+        project: config.project,
+        mcp: config.mcp,
+        agents: config.agent,
+      },
+      null,
+      2
+    )
+  );
 
   return config;
 }
@@ -45,8 +53,9 @@ async function checkRuntimeState() {
 }
 
 async function startMcpServer() {
+  const { getRuntimeFilePath } = await import('../core/config/runtime-state.js');
   console.log('\n[SERVER] Starting MCP server...');
-  console.log('[SERVER] Using runtime:', process.env.MCP_RUNTIME_FILE || '.mcp-runtime.json');
+  console.log('[SERVER] Using runtime:', process.env.MCP_RUNTIME_FILE || getRuntimeFilePath());
 
   const { startServer } = await import('../server.js');
 
@@ -54,7 +63,7 @@ async function startMcpServer() {
     const server = await startServer({
       silent: true,
       autoDiscoverPort: true,
-      healthCheck: true
+      healthCheck: true,
     });
 
     console.log('[SERVER] Started on port:', server.port);
@@ -157,7 +166,7 @@ ENVIRONMENT:
   console.log('\n' + '='.repeat(60));
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Error:', err);
   process.exit(1);
 });

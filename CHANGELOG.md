@@ -6,6 +6,83 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
+## [v2.6.0] - MCP Management & Registry
+
+### Added
+
+- **MCP Server Registry** — Register, manage, and discover external MCP servers
+  - CRUD operations via MCP tools (`mcp_register_server`, `mcp_list_servers`, `mcp_get_server`, `mcp_update_server`, `mcp_unregister_server`)
+  - HTTP API routes at `/mcp/*` (11 endpoints: GET, POST, PUT, DELETE)
+  - SQLite persistence (`mcp_servers` table + 4 indexes)
+  - Project-scoped filtering (servers isolated by project)
+
+- **Dynamic Tool Registration** — Auto-discover and proxy tools from connected MCP servers
+  - `getDiscoveredTools()` — Returns all tools from connected servers for `tools/list`
+  - `isProxiedTool()` / `parseProxiedToolName()` — Detect and parse `mcp__<serverId>__<toolName>` format
+  - `callProxiedTool()` — Route proxied tool calls to correct remote server
+  - In-memory cache managed by `setDiscoveredTools()` / `clearDiscoveredTools()`
+
+- **Connection Management** — Connect to external MCP servers and discover their tools
+  - `mcp_connect_server` — Connect to a server and populate tool cache
+  - `mcp_disconnect_server` — Disconnect and clear tool cache
+  - Support for HTTP/HTTPS servers (stdio servers registered but not proxied)
+
+- **Health Monitoring** — Track server health and connection status
+  - `mcp_server_health` — Get health status with latency and error count
+  - Automatic health tracking on connection/disconnection
+
+- **Authorization Layer** — Auth-protected write routes, optional auth on reads
+  - Write routes (POST/PUT/DELETE) require valid JWT or API key
+  - Read routes (GET) use optional auth
+  - Project-scoped access control
+
+### Architecture
+
+- **Option C: Combined Registry + HTTP Proxy**
+  - Metadata-only registration for stdio servers (cannot be proxied)
+  - HTTP proxy for HTTP/HTTPS servers (JSON-RPC forwarding)
+  - Dynamic tool injection into MCP server's `tools/list` and `tools/call`
+
+- **New Files:**
+  - `src/core/mcp-registry/index.js` (~560 lines: CRUD, connection, discovery, proxy, health, dynamic tool cache)
+  - `src/core/mcp-registry/routes.js` (~225 lines: 11 HTTP endpoints with auth middleware)
+  - `tools/mcpRegistryTools.js` (~400 lines: 9 MCP tool definitions + handler dispatcher)
+  - `tests/mcp-registry-test.js` (~220 lines: 11 unit tests)
+
+- **Modified Files:**
+  - `src/core/database/sqlite/schema.js` — Added `mcp_servers` table + 4 indexes
+  - `src/core/database/sqlite/collection.js` — Added `env`, `auth_config`, `health` JSON fields
+  - `mcp-server.js` — Added registry tool imports, dispatch, and proxied tool handling
+  - `server.js` — Mounted MCP registry HTTP routes
+  - `core/config/project-config-loader.js` — Added `mcpRegistry: true` feature flag
+
+### Corrected
+
+- **Registry MCP tool names** (appended correction; the draft names used above are not what
+  `tools/mcpRegistryTools.js` registers):
+
+| Documented above (draft) | Actual registered name                               |
+| ------------------------ | ---------------------------------------------------- |
+| `mcp_register_server`    | `register_mcp_server`                                |
+| `mcp_list_servers`       | `list_mcp_servers`                                   |
+| `mcp_get_server`         | `get_mcp_server`                                     |
+| `mcp_unregister_server`  | `unregister_mcp_server`                              |
+| `mcp_connect_server`     | `connect_mcp_server`                                 |
+| `mcp_disconnect_server`  | `disconnect_mcp_server`                              |
+| `mcp_server_health`      | `get_mcp_health`                                     |
+| `mcp_update_server`      | _(no MCP tool — updates use `PUT /mcp/servers/:id`)_ |
+
+- Not listed above: `proxy_mcp_call`, `discover_mcp_tools` (complete the 9-tool surface).
+
+**Amended v2.6.0 file list** (work landed after the "New Files" entry above was written):
+
+- `src/core/mcp-registry/proxy.js` — JSON-RPC forwarding, named `TIMEOUTS` policy, per-server circuit breaker (`failureThreshold: 5`, `coolOffMs: 30000`, `halfOpenMaxCalls: 1`)
+- `src/core/mcp-registry/crypto.js` — AES-256-GCM credential encryption; value format `enc:v1:<iv_b64>:<tag_b64>:<ct_b64>`, key derived from `MCP_MASTER_SECRET`
+- `tests/mcp-registry-test.js` — grew from 11 → 24 tests (auth header injection, breaker open/half-open recovery, encryption round trip, mock-HTTP connect/discover/proxy)
+- `package.json` — `test:mcp-registry`, `test:db`, and `test:e2e` chained into `npm test`; suite total is now 89 tests across 5 suites
+
+---
+
 ## [v2.5.2] - Multi-Node Connection Support
 
 ### Fixed

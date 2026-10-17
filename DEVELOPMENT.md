@@ -20,7 +20,7 @@ AI agents (like Roo, Codex, Cursor) need a shared memory system that persists ac
 
 ### Current Status
 
-- **Version:** 2.5.0
+- **Version:** 2.6.0
 - **Status:** Preserved (not actively developed)
 - **Repository:** https://github.com/coderooz/Local-MCP-Memory-Server
 - **License:** MIT
@@ -40,11 +40,11 @@ AI agents (like Roo, Codex, Cursor) need a shared memory system that persists ac
 
 ### Known Limitations
 
-- No built-in authentication (runs locally by default)
+- Core API routes are unauthenticated by default (JWT/API-key auth guards `/mcp/*`; use a reverse proxy for remote access)
 - No encryption at rest (use filesystem-level encryption for sensitive data)
 - Single-process architecture (no horizontal scaling)
 - Browser automation requires Playwright browser installation
-- MongoDB required as external dependency
+- No external services required (SQLite is embedded)
 
 ---
 
@@ -71,10 +71,10 @@ AI agents (like Roo, Codex, Cursor) need a shared memory system that persists ac
 │            Express HTTP API server                      │
 │         (REST endpoints for all operations)             │
 └─────────────────────┬───────────────────────────────────┘
-                      │ MongoDB driver
+                      │ SQLite driver
                       ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   MongoDB                               │
+│                   SQLite                                │
 │         (contexts, tasks, issues, agents,               │
 │          messages, activity, locks, metrics)            │
 └─────────────────────────────────────────────────────────┘
@@ -132,7 +132,7 @@ AI agents (like Roo, Codex, Cursor) need a shared memory system that persists ac
 ### Important Design Decisions
 
 1. **ESM Only** - Entire codebase uses ES Modules (`"type": "module"`), no CommonJS
-2. **No Mongoose** - Uses MongoDB native driver directly for full control
+2. **No ORM** - Uses the `better-sqlite3` driver directly for full control
 3. **Config-Driven** - All connection parameters loaded from `.project-mcp.json`
 4. **In-Memory Runtime** - No file-based runtime state (all in-memory)
 5. **Health-Based Discovery** - Agents discover MCP server via port scanning and health checks
@@ -211,14 +211,14 @@ local-mcp-memory/
 ### Required Runtime Versions
 
 - **Node.js:** >=20.0.0 (check `.nvmrc` for exact version)
-- **MongoDB:** 7.x or later (native driver)
+- **Database:** embedded SQLite via `better-sqlite3` (no external install)
 - **npm:** 9+ (comes with Node.js)
 
 ### Required Languages/Frameworks
 
 - JavaScript (ES2022+ / ESM modules)
 - Express 5.x
-- MongoDB native driver 7.x
+- `better-sqlite3` 13.x
 - Playwright 1.49.x (for browser automation)
 
 ### Required Tooling
@@ -240,8 +240,8 @@ npx playwright install
 Create a `.env` file with:
 
 ```env
-# MongoDB Configuration
-MONGO_URI=mongodb://localhost:27017/mcp_memory
+# Database (embedded SQLite - optional)
+# MCP_DB_PATH=./data/mcp-memory.db
 
 # Server Configuration
 # Use 0 for dynamic port allocation (recommended)
@@ -260,18 +260,17 @@ LOG_LEVEL=info
 
 ### Required External Services
 
-- **MongoDB** - Must be running locally or accessible via `MONGO_URI`
+- **None** - SQLite is embedded; there is no database service to run
 - **Node.js 20+** - Runtime requirement
 
 ### Local Setup Requirements
 
 1. Install Node.js 20+
-2. Install and start MongoDB
-3. Clone the repository
-4. Run `npm install`
-5. Create `.env` from `.env.example`
-6. Start the API server: `npm run start:api`
-7. Start the MCP server: `npm start`
+2. Clone the repository
+3. Run `npm install`
+4. Create `.env` from `.env.example` (optional - SQLite is embedded)
+5. Start the API server: `npm run start:api`
+6. Start the MCP server: `npm start`
 
 ---
 
@@ -357,7 +356,7 @@ node tests/mcp-chaos-resilience-test.js
 
 ### Known Testing Limitations
 
-- Requires running MongoDB instance
+- Legacy suites (stress, vulnerability, conflict) still expect MongoDB; the `npm test` gate does not
 - Browser automation tests require Playwright browsers installed
 - No mock server for external service testing
 
@@ -368,7 +367,7 @@ node tests/mcp-chaos-resilience-test.js
 ### Deployment Dependencies
 
 - Node.js 20+ runtime
-- MongoDB database
+- Writable path for the SQLite database file (default `./data`)
 - Network access for MCP clients
 
 ### Deployment Procedures
@@ -383,8 +382,8 @@ node tests/mcp-chaos-resilience-test.js
 
 3. **Production:**
    - Set `NODE_ENV=production` in environment
-   - Configure MongoDB connection string
-   - Ensure MongoDB is accessible
+   - Set `MCP_DB_PATH` if the database file must live outside `./data`
+   - Ensure the database file path is writable
    - Run both API and MCP servers
 
 ### CI/CD Workflows
@@ -462,8 +461,8 @@ node tests/mcp-chaos-resilience-test.js
 
 ## Known Issues
 
-1. **No Authentication** - Server runs without auth; add reverse proxy for remote access
-2. **Single Process** - No horizontal scaling; single MongoDB connection per server
+1. **Partial Authentication** - JWT/API-key auth guards `/mcp/*` registry routes; core API routes are open (run locally or behind a reverse proxy)
+2. **Single Process** - No horizontal scaling; single SQLite connection per server
 3. **Port Conflicts** - Dynamic port allocation (PORT=0) recommended to avoid conflicts
 4. **Playwright Browsers** - Must be installed separately (`npx playwright install`)
 
@@ -481,7 +480,7 @@ node tests/mcp-chaos-resilience-test.js
 
 | Dependency          | Purpose            | Required |
 | ------------------- | ------------------ | -------- |
-| MongoDB             | Primary database   | Yes      |
+| better-sqlite3      | Primary database   | Yes      |
 | Node.js 20+         | Runtime            | Yes      |
 | Playwright browsers | Browser automation | Optional |
 
@@ -502,7 +501,7 @@ node tests/mcp-chaos-resilience-test.js
 
    ```bash
    cp .env.example .env
-   # Edit .env with actual MongoDB URI, project name, etc.
+   # Edit .env with MCP_DB_PATH, project name, etc.
    ```
 
 2. **`node_modules/`:** Reinstall via:
@@ -518,7 +517,6 @@ node tests/mcp-chaos-resilience-test.js
 
 ### External Dependencies That Cannot Be Reconstructed Solely from Git
 
-- **MongoDB database** - Must be running and accessible
 - **Playwright browsers** - Must be downloaded (not in git)
 - **Environment variables** - Must be configured in `.env`
 
@@ -526,12 +524,10 @@ node tests/mcp-chaos-resilience-test.js
 
 1. Clone repository from GitHub
 2. Install Node.js 20+
-3. Install MongoDB
-4. Run `npm install`
-5. Copy `.env.example` to `.env` and configure
-6. Start MongoDB
-7. Run `npm run start:api` (API server)
-8. Run `npm start` (MCP server)
+3. Run `npm install`
+4. Copy `.env.example` to `.env` and configure (optional - SQLite is embedded)
+5. Run `npm run start:api` (API server)
+6. Run `npm start` (MCP server)
 
 ---
 

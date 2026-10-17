@@ -9,20 +9,25 @@ This document describes how the MCP connection lifecycle works, how runtime stat
 ## Multi-Node Connection Architecture
 
 ### The Problem
+
 Multiple OpenCode terminals (nodes) could not connect to the same MCP server simultaneously. The first node connects, but subsequent nodes fail.
 
 ### Root Causes
+
 1. **Cache never refreshed**: Runtime state was cached in each node's memory forever
 2. **PID validation too strict**: `process.kill(pid, 0)` fails for cross-parent PIDs
 3. **Validation blocked all**: Connection was rejected if PID validation failed, even when port was alive
 
 ### The Fix (v2.5.2)
+
 1. **Cache TTL**: Runtime now auto-refreshes after 500ms
 2. **Port-first validation**: Port liveness is checked BEFORE PID
 3. **PID optional**: If port is alive, PID validation failure doesn't block connection
 
 ### Shared State
+
 All nodes share the same `.mcp-runtime.json` file:
+
 ```
 Node A (terminal 1) → MCP Server :4000
 Node B (terminal 2) → MCP Server :4000  (same server!)
@@ -30,6 +35,7 @@ Node C (terminal 3) → MCP Server :4000  (same server!)
 ```
 
 ### Connection Model
+
 ```
 ONE MCP Server ←── MANY Clients (nodes)
      │
@@ -41,13 +47,16 @@ Each node: reads fresh from disk, validates port, connects
 ```
 
 ### Isolation Preserved
+
 Isolation applies to:
+
 - Memory (contexts scoped to project/agent)
 - Tasks (assigned to specific agents)
 - Messages (per-agent inbox)
 - Agent registry (per-project)
 
 Isolation does NOT apply to:
+
 - Connection layer (shared port)
 - Runtime state file (global)
 
@@ -125,6 +134,7 @@ Before using the runtime state, the system validates:
 **Problem**: `.mcp-runtime.json` contains old PID/port but process is dead
 
 **Solution**:
+
 1. `validateRuntime()` returns `valid: false`
 2. `invalidateRuntime()` deletes the runtime file
 3. Fallback port discovery scans for available port
@@ -134,6 +144,7 @@ Before using the runtime state, the system validates:
 **Problem**: Runtime shows port 4000 but nothing is listening
 
 **Solution**:
+
 1. `isPortAlive(4000)` returns `false`
 2. Port is marked as stale
 3. New port discovery triggered
@@ -143,6 +154,7 @@ Before using the runtime state, the system validates:
 **Problem**: MCP server process killed but runtime not updated
 
 **Solution**:
+
 1. `isValidPID(pid)` returns `false` (signal 0 fails)
 2. Runtime invalidated
 3. Connection manager retries with fallback ports
@@ -160,8 +172,9 @@ process.on('exit', cleanupOnError);
 ```
 
 On shutdown:
+
 1. Closes HTTP server
-2. Closes MongoDB connection
+2. Closes SQLite database
 3. Calls `setMcpStopped()` to clear runtime
 
 ### mcp-server.js
@@ -172,6 +185,7 @@ process.on('SIGTERM', cleanup);
 ```
 
 On shutdown:
+
 1. Calls `setMcpStopped()`
 2. Calls `invalidateRuntime()` to delete runtime file
 
@@ -180,11 +194,13 @@ On shutdown:
 ## Port Discovery Fallback
 
 Default fallback ports in order:
+
 ```js
-[3000, 4000, 5000, 8080, 8888]
+[3000, 4000, 5000, 8080, 8888];
 ```
 
 Discovery logic:
+
 1. Try cached runtime port (if valid)
 2. Scan fallback ports for available
 3. Return first available or null
@@ -193,11 +209,11 @@ Discovery logic:
 
 ## Error Handling
 
-| Error | Cause | Recovery |
-|-------|-------|----------|
+| Error                                    | Cause                             | Recovery                       |
+| ---------------------------------------- | --------------------------------- | ------------------------------ |
 | `-32603: Cannot read properties of null` | Runtime was null or port was null | Clear runtime, retry discovery |
-| `MCP port not available` | No ports available | Wait for server start |
-| `Health check failed` | Server not ready | Retry with backoff |
+| `MCP port not available`                 | No ports available                | Wait for server start          |
+| `Health check failed`                    | Server not ready                  | Retry with backoff             |
 
 ---
 

@@ -14,7 +14,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
-Local MCP Memory Server is a MongoDB-backed coordination layer for MCP clients that need more than isolated memory. It gives agents and humans a shared system for persistent context, project descriptors, tasks, issues, activity tracking, soft locks, and collaboration-safe state updates.
+Local MCP Memory Server is a SQLite-backed coordination layer for MCP clients that need more than isolated memory. It gives agents and humans a shared system for persistent context, project descriptors, tasks, issues, activity tracking, soft locks, and collaboration-safe state updates.
 
 Official Docs: https://coderooz.github.io/Local-MCP-Memory-Server/
 
@@ -28,7 +28,7 @@ The stack is:
 
 - MCP stdio transport in `mcp-server.js`
 - Express API in `server.js`
-- MongoDB persistence for memory, versions, activity, locks, tasks, issues, messages, metrics, and project intelligence
+- Embedded SQLite persistence (`better-sqlite3`, no external database service) for memory, versions, activity, locks, tasks, issues, messages, metrics, and project intelligence
 
 ## Feature Highlights
 
@@ -42,6 +42,9 @@ The stack is:
 - Project map for reusable codebase structure knowledge
 - Context graph retrieval that links memory, tasks, issues, actions, versions, and related agents
 - Metrics for task completion, memory usage, and collaboration signals
+- MCP server registry to register, connect, discover, health-check, and JSON-RPC proxy external MCP servers
+- Web dashboard (`npm run start:dashboard`) for a visual overview
+- JWT + API-key authentication with `/auth/login`, `/auth/register`, and API-key management
 
 ## Human + Agent Collaboration
 
@@ -66,7 +69,7 @@ npm install
 2. Create `.env`:
 
 ```env
-MONGO_URI=mongodb://localhost:27017/mcp_memory
+MCP_DB_PATH=./data/mcp-memory.db
 PORT=4000
 MCP_AGENT=codex
 MCP_PROJECT=local-mcp-server
@@ -121,6 +124,8 @@ Key MCP tools now include:
 - `register_agent`, `heartbeat_agent`, `list_agents`
 - `create_project_map`, `fetch_project_map`
 - `fetch_metrics`, `log_action`, `get_logs`
+- `register_mcp_server`, `unregister_mcp_server`, `list_mcp_servers`, `get_mcp_server`
+- `connect_mcp_server`, `disconnect_mcp_server`, `proxy_mcp_call`, `discover_mcp_tools`, `get_mcp_health`
 
 ## Documentation
 
@@ -150,6 +155,7 @@ npm run chaos:test
 ```
 
 The script prints a structured JSON report with:
+
 - protocol integrity (`stdio` JSON-RPC purity)
 - tool discovery and core-tool execution checks
 - multi-session isolation check

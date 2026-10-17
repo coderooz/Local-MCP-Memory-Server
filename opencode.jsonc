@@ -4,7 +4,9 @@
 
   "instructions": [
     "AGENTS.md",
-    "BEHAVIOR.md"
+    "BEHAVIOR.md",
+    ".workspace/LFI/**",
+    ".workspace/PRI/**"
   ],
 
   "agent": {

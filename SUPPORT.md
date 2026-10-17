@@ -33,21 +33,21 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and developme
 
 ### Server won't start
 
-1. Check MongoDB is running: `mongod --version`
-2. Verify `.env` file exists with `MONGO_URI`
+1. Check Node.js is supported: `node --version` (20+)
+2. Verify `.env` file exists if you set custom values (e.g. `MCP_DB_PATH`)
 3. Check port 4000 is available
 
 ### MCP tools not working
 
 1. Verify server is running: `npm run start:api`
 2. Check MCP server connection: `npm start`
-3. Review logs in MongoDB `logs` collection
+3. Review the server log output for errors
 
 ### Connection issues
 
 ```bash
-# Test MongoDB connection
-mongosh --eval "db.adminCommand('ping')"
+# Confirm the embedded SQLite database file exists
+ls -l data/mcp-memory.db
 
 # Check server health
 curl http://localhost:4000/health
@@ -64,6 +64,6 @@ curl http://localhost:4000/health
 
 ## Additional Resources
 
-- [MongoDB Documentation](https://docs.mongodb.com/)
+- [SQLite Documentation](https://www.sqlite.org/docs.html)
 - [MCP Protocol Specification](https://modelcontextprotocol.io/)
 - [Node.js Documentation](https://nodejs.org/en/docs/)

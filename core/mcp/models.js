@@ -100,6 +100,13 @@ export class BaseModel {
     this.metadata = data.metadata || {};
 
     this.version = data.version || 1;
+
+    // Optional idempotency key: persisted only where the table exposes a
+    // column (tasks, chat_messages); the SQLite adapter filters unknown
+    // columns, so other domains simply drop it.
+    if (data.idempotencyKey !== undefined && data.idempotencyKey !== null) {
+      this.idempotencyKey = data.idempotencyKey;
+    }
   }
 }
 

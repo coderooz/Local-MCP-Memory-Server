@@ -1,9 +1,9 @@
 # Project Reference Index (PRI)
 
 **Project:** local-mcp-memory
-**Version:** 2.5.0
-**Last Updated:** 2026-09-17
-**Status:** Preserved (not actively developed)
+**Version:** 2.6.0
+**Last Updated:** 2026-09-19
+**Status:** Active (MCP Management implemented)
 
 ---
 
@@ -17,17 +17,17 @@ Consumed by opencode as a globally-configured MCP server.
 
 ## Tech Stack
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Runtime | Node.js | >=20.0.0 |
-| Framework | Express | 5.x |
-| Database | MongoDB (native driver) | 7.x |
-| Language | JavaScript (ESM) | ES2022+ |
-| Testing | node:test | Built-in |
-| Linting | ESLint | 8.x |
-| Formatting | Prettier | 3.x |
-| Docs | GitHub Pages | - |
-| Browser Automation | Playwright | 1.49.x |
+| Component          | Technology              | Version  |
+| ------------------ | ----------------------- | -------- |
+| Runtime            | Node.js                 | >=20.0.0 |
+| Framework          | Express                 | 5.x      |
+| Database           | SQLite (better-sqlite3) | 11.x     |
+| Language           | JavaScript (ESM)        | ES2022+  |
+| Testing            | node:test               | Built-in |
+| Linting            | ESLint                  | 8.x      |
+| Formatting         | Prettier                | 3.x      |
+| Docs               | GitHub Pages            | -        |
+| Browser Automation | Playwright              | 1.49.x   |
 
 ---
 
@@ -45,8 +45,19 @@ local-mcp-memory/
 │
 ├── src/                       # New modular source architecture
 │   ├── core/
-│   │   ├── database/          # connection.js, models.js (MongoDB native driver)
+│   │   ├── database/          # connection.js, models.js, sqlite/ (SQLite embedded)
+│   │   │   ├── connection.js  # Database connection manager
+│   │   │   ├── models.js      # Data models (MongoDB-compatible API)
+│   │   │   └── sqlite/        # SQLite database module
+│   │   │       ├── connection.js    # SQLite connection (WAL, busy timeout, foreign keys)
+│   │   │       ├── schema.js        # Schema definitions (18 tables + FTS5)
+│   │   │       ├── query-builder.js # MongoDB→SQLite query translator
+│   │   │       ├── collection.js    # MongoDB-compatible Collection class
+│   │   │       └── index.js         # Main DB wrapper
 │   │   ├── mcp/               # tool-registry.js, tool-executor.js
+│   │   ├── mcp-registry/      # External MCP server management
+│   │   │   ├── index.js       # Registry business logic (CRUD, connection, discovery, proxy)
+│   │   │   └── routes.js      # HTTP API routes (11 endpoints)
 │   │   └── session/           # Session management
 │   ├── domains/
 │   │   ├── activity/          # Activity tracking
@@ -76,6 +87,7 @@ local-mcp-memory/
 │   ├── chatTools.js           # Chat system tools
 │   ├── emulatorTools.js       # Android emulator tools
 │   ├── feedbackTools.js       # Feedback tools
+│   ├── mcpRegistryTools.js    # MCP server registry tools (9 tools)
 │   ├── notificationTools.js   # Notification/alert tools
 │   └── store_context.js       # Memory storage tool
 │
@@ -108,18 +120,19 @@ local-mcp-memory/
 
 ## Entry Points
 
-| File | Purpose | How to Run |
-|------|---------|-----------|
-| `mcp-server.js` | MCP stdio server | `npm start` |
-| `server.js` | Express HTTP API | `npm run start:api` |
-| `mcp-shim.js` | MCP shim for editor integration | `node /path/to/mcp-shim.js` |
-| `startMemoryServer.js` | Shared startup logic | Used by other entry points |
+| File                   | Purpose                         | How to Run                  |
+| ---------------------- | ------------------------------- | --------------------------- |
+| `mcp-server.js`        | MCP stdio server                | `npm start`                 |
+| `server.js`            | Express HTTP API                | `npm run start:api`         |
+| `mcp-shim.js`          | MCP shim for editor integration | `node /path/to/mcp-shim.js` |
+| `startMemoryServer.js` | Shared startup logic            | Used by other entry points  |
 
 ---
 
 ## MCP Tool Surface
 
 ### Memory Tools
+
 - `store_context` — Store persistent memory
 - `search_context` — Search stored memory
 - `update_context` — Update memory with version tracking
@@ -128,32 +141,38 @@ local-mcp-memory/
 - `optimize_memory` — Run memory optimization
 
 ### Project Intelligence Tools
+
 - `set_project_descriptor` — Store/update project descriptor
 - `get_project_descriptor` — Fetch project descriptor
 - `create_project_map` — Store project-map entries
 - `fetch_project_map` — Fetch project-map entries
 
 ### Task Tools
+
 - `create_task` — Create coordination tasks
 - `fetch_tasks` — Fetch tasks with filters
 - `assign_task` — Claim/assign tasks
 - `update_task` — Update task status/blockers
 
 ### Issue Tools
+
 - `create_issue` — Create issues/notes/blockers
 - `resolve_issue` — Resolve issues
 - `fetch_issues` — Fetch issues with filters
 
 ### Agent Tools
+
 - `register_agent` — Register agents
 - `heartbeat_agent` — Send agent heartbeats
 - `list_agents` — List registered agents
 
 ### Communication Tools
+
 - `send_message` — Send messages between agents
 - `request_messages` — Fetch messages for current agent
 
 ### Collaboration Tools
+
 - `record_activity` — Append activity entries
 - `fetch_activity` — Fetch activity stream
 - `acquire_resource_lock` — Acquire soft locks
@@ -161,6 +180,7 @@ local-mcp-memory/
 - `fetch_resource_locks` — Fetch active locks
 
 ### System Tools
+
 - `fetch_metrics` — Fetch task/memory metrics
 - `log_action` — Log actions for traceability
 - `get_logs` — Retrieve system logs
@@ -168,7 +188,20 @@ local-mcp-memory/
 - `reset_mcp` — Execute reset operations
 - `estimate_reset_impact` — Preview reset impact
 
+### MCP Registry Tools (9 tools)
+
+- `mcp_register_server` — Register external MCP server
+- `mcp_list_servers` — List registered servers with filters
+- `mcp_get_server` — Get server details by ID
+- `mcp_update_server` — Update server configuration
+- `mcp_unregister_server` — Remove server from registry
+- `mcp_connect_server` — Connect to server and discover tools
+- `mcp_disconnect_server` — Disconnect from server
+- `mcp_server_health` — Get server health status
+- `mcp_list_all_tools` — List all discovered tools across servers
+
 ### Browser Automation Tools (24 tools)
+
 - Session: `open_browser`, `close_browser`, `get_active_sessions`
 - Navigation: `navigate_to_url`, `reload_page`, `go_back`, `go_forward`
 - DOM: `click_element`, `fill_input`, `get_element_text`, `get_elements`, `wait_for_selector`
@@ -178,59 +211,73 @@ local-mcp-memory/
 
 ---
 
-## Database Collections
+## Database Tables (SQLite)
 
-| Collection | Purpose | Key Indexes |
-|------------|---------|-------------|
-| `contexts` | Memory entries | project, agent, tags, text search |
-| `context_versions` | Version history | context_id, version |
-| `tasks` | Coordination tasks | project, status, assigned_to, priority |
-| `issues` | Issues/notes/blockers | project, type, status |
-| `agents` | Agent registry | project, agent_id |
-| `messages` | Inter-agent messages | project, to_agent, from_agent |
-| `activity` | Activity stream | project, timestamp |
-| `resource_locks` | Soft locks | resource, project |
-| `project_descriptors` | Project identity | project |
-| `project_map` | Codebase intelligence | project, file_path |
-| `metrics` | System metrics | project, name |
-| `logs` | Operational logs | project, level, timestamp |
+| Table                   | Purpose               | Key Indexes                            |
+| ----------------------- | --------------------- | -------------------------------------- |
+| `contexts`              | Memory entries        | project, agent, tags, text search      |
+| `context_versions`      | Version history       | context_id, version                    |
+| `tasks`                 | Coordination tasks    | project, status, assigned_to, priority |
+| `issues`                | Issues/notes/blockers | project, type, status                  |
+| `agents`                | Agent registry        | project, agent_id                      |
+| `messages`              | Inter-agent messages  | project, to_agent, from_agent          |
+| `activity`              | Activity stream       | project, timestamp                     |
+| `resource_locks`        | Soft locks            | resource, project                      |
+| `project_descriptors`   | Project identity      | project                                |
+| `project_map`           | Codebase intelligence | project, file_path                     |
+| `metrics`               | System metrics        | project, name                          |
+| `logs`                  | Operational logs      | project, level, timestamp              |
+| `actions`               | Action logging        | project, timestamp                     |
+| `memory_versions`       | Memory versioning     | memory_id, version                     |
+| `sessions`              | Session tracking      | project, status                        |
+| `decisions`             | Decision tracking     | project, timestamp                     |
+| `constraint_violations` | Constraint tracking   | project, timestamp                     |
+| `migrations`            | Migration tracking    | version                                |
+| `mcp_servers`           | MCP server registry   | project, server_id, type, sessionId    |
+
+### Full-Text Search (FTS5)
+
+- `contexts_fts` — Full-text search on contexts
+- `project_map_fts` — Full-text search on project_map
 
 ---
 
 ## Configuration
 
 ### Environment Variables
-| Variable | Required | Default | Purpose |
-|----------|----------|---------|---------|
-| `MONGO_URI` | Yes | `mongodb://localhost:27017/mcp_memory` | MongoDB connection |
-| `PORT` | No | `0` (dynamic) | API server port |
-| `MCP_PROJECT` | No | directory name | Project identifier |
-| `MCP_AGENT` | No | `unknown` | Agent identifier |
-| `MCP_SCOPE` | No | `project` | Memory visibility scope |
-| `NODE_ENV` | No | `development` | Environment mode |
+
+| Variable      | Required | Default                | Purpose                 |
+| ------------- | -------- | ---------------------- | ----------------------- |
+| `MCP_DB_PATH` | No       | `./data/mcp-memory.db` | SQLite database path    |
+| `PORT`        | No       | `0` (dynamic)          | API server port         |
+| `MCP_PROJECT` | No       | directory name         | Project identifier      |
+| `MCP_AGENT`   | No       | `unknown`              | Agent identifier        |
+| `MCP_SCOPE`   | No       | `project`              | Memory visibility scope |
+| `NODE_ENV`    | No       | `development`          | Environment mode        |
 
 ### Config Files
-| File | Purpose | Gitignored |
-|------|---------|-----------|
-| `.env` | Environment variables | Yes |
-| `.env.example` | Environment template | No |
-| `local-mcp-memory.project-mcp.json` | MCP project config | No |
-| `mcp.json` | MCP server config | No |
-| `mcp.config.json` | MCP config template | No |
+
+| File                                | Purpose               | Gitignored |
+| ----------------------------------- | --------------------- | ---------- |
+| `.env`                              | Environment variables | Yes        |
+| `.env.example`                      | Environment template  | No         |
+| `local-mcp-memory.project-mcp.json` | MCP project config    | No         |
+| `mcp.json`                          | MCP server config     | No         |
+| `mcp.config.json`                   | MCP config template   | No         |
 
 ---
 
 ## CI/CD
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `ci.yml` | Push/PR | Lint, test, build |
-| `auto-tag.yml` | Version push | Auto-tag releases |
-| `release.yml` | Manual | Create GitHub releases |
-| `security.yml` | Schedule | Security scanning |
-| `labeler.yml` | PR | Auto-label PRs |
-| `stale.yml` | Schedule | Mark stale issues |
-| `welcome.yml` | New contributor | Welcome message |
+| Workflow       | Trigger         | Purpose                |
+| -------------- | --------------- | ---------------------- |
+| `ci.yml`       | Push/PR         | Lint, test, build      |
+| `auto-tag.yml` | Version push    | Auto-tag releases      |
+| `release.yml`  | Manual          | Create GitHub releases |
+| `security.yml` | Schedule        | Security scanning      |
+| `labeler.yml`  | PR              | Auto-label PRs         |
+| `stale.yml`    | Schedule        | Mark stale issues      |
+| `welcome.yml`  | New contributor | Welcome message        |
 
 ---
 
@@ -259,23 +306,23 @@ npm run chaos:test
 
 ## Key Dependencies
 
-| Package | Purpose | Version |
-|---------|---------|---------|
-| `express` | HTTP framework | ^5.2.1 |
-| `mongodb` | Database driver | ^7.1.0 |
-| `playwright` | Browser automation | ^1.49.1 |
-| `dotenv` | Environment loading | ^17.3.1 |
-| `uuid` | Unique identifiers | ^13.0.0 |
+| Package          | Purpose             | Version |
+| ---------------- | ------------------- | ------- |
+| `express`        | HTTP framework      | ^5.2.1  |
+| `better-sqlite3` | Database driver     | ^11.x   |
+| `playwright`     | Browser automation  | ^1.49.1 |
+| `dotenv`         | Environment loading | ^17.3.1 |
+| `uuid`           | Unique identifiers  | ^13.0.0 |
 
 ---
 
 ## External Dependencies
 
-| Service | Purpose | Required |
-|---------|---------|----------|
-| MongoDB | Primary database | Yes |
-| Node.js 20+ | Runtime | Yes |
-| Playwright browsers | Browser automation | Optional |
+| Service             | Purpose            | Required       |
+| ------------------- | ------------------ | -------------- |
+| SQLite (embedded)   | Primary database   | Yes (embedded) |
+| Node.js 20+         | Runtime            | Yes            |
+| Playwright browsers | Browser automation | Optional       |
 
 ---
 
@@ -285,18 +332,41 @@ npm run chaos:test
 2. No encryption at rest (use filesystem-level encryption)
 3. Browser automation requires Playwright browser installation
 4. Single-process architecture (no horizontal scaling)
+5. SQLite is embedded (no network access, single-writer)
 
 ---
 
 ## Governance Files
 
-| File | Purpose | Location |
-|------|---------|----------|
-| `AGENTS.md` | Project rules for agents | Root |
-| `BEHAVIOR.md` | Behavioral instructions | Root |
-| `GOVERNANCE.md` | Global governance rules | `~/.config/opencode/` |
-| `PROJECT_WORKFLOW.md` | Global project workflow | `~/.config/opencode/governance/` |
+| File                  | Purpose                  | Location                         |
+| --------------------- | ------------------------ | -------------------------------- |
+| `AGENTS.md`           | Project rules for agents | Root                             |
+| `BEHAVIOR.md`         | Behavioral instructions  | Root                             |
+| `GOVERNANCE.md`       | Global governance rules  | `~/.config/opencode/`            |
+| `PROJECT_WORKFLOW.md` | Global project workflow  | `~/.config/opencode/governance/` |
 
 ---
 
-*This PRI is maintained as part of the project's governance compliance. Update when project structure changes significantly.*
+## Reference Maintenance Log
+
+### 2026-09-19
+
+**Change:** Updated PRI to reflect SQLite migration
+
+**Classification:** MODIFIED
+
+**Updated:**
+
+- Tech Stack: MongoDB → SQLite (better-sqlite3)
+- Repository Structure: Added SQLite module structure
+- Database Tables: Replaced MongoDB collections with SQLite tables
+- Configuration: MONGO_URI → MCP_DB_PATH
+- Key Dependencies: mongodb → better-sqlite3
+- External Dependencies: Removed MongoDB requirement
+- Known Limitations: Added SQLite constraint note
+
+**Verification:** STRUCTURAL
+
+---
+
+_This PRI is maintained as part of the project's governance compliance. Update when project structure changes significantly._

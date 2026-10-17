@@ -14,6 +14,9 @@ export function createRoom(db, roomData) {
 
   const room = new ChatRoomModel({
     ...roomData,
+    // PK must equal room_id: chat_messages.room_id has a FK to chat_rooms(id)
+    // and every chat service lookup uses the natural room_id value.
+    id: roomData.id || roomId,
     room_id: roomId,
     project: roomData.project || 'default',
     is_active: true,
@@ -130,12 +133,18 @@ export async function sendMessage(db, messageData) {
     { room_id: roomId },
     {
       $inc: { sequence: 1 },
-      $set: { updatedAt: new Date() }
+      $set: { updatedAt: new Date() },
     },
     { returnDocument: 'before' }
   );
 
-  const sequence = result?.sequence || 0;
+  if (!result) {
+    const err = new Error(`Chat room not found: ${roomId}`);
+    err.code = 'ROOM_NOT_FOUND';
+    throw err;
+  }
+
+  const sequence = result.sequence || 0;
 
   const message = new ChatMessageModel({
     ...messageData,
@@ -144,7 +153,7 @@ export async function sendMessage(db, messageData) {
     metadata: {
       ...(messageData.metadata || {}),
       sequence,
-      idempotencyKey
+      idempotencyKey,
     },
   });
 
@@ -190,7 +199,7 @@ export function getMessages(db, options = {}) {
     .find(filter)
     .sort({
       createdAt: options.order === 'asc' ? 1 : -1,
-      'metadata.sequence': options.order === 'asc' ? 1 : -1
+      'metadata.sequence': options.order === 'asc' ? 1 : -1,
     })
     .limit(options.limit || 100)
     .toArray();
@@ -252,8 +261,8 @@ export function shareFindingInRoom(db, roomId, agentId, finding) {
   });
 }
 
-export function getOrCreateDefaultRoom(db, project) {
-  const existingRoom = db.collection('chat_rooms').findOne({
+export async function getOrCreateDefaultRoom(db, project) {
+  const existingRoom = await db.collection('chat_rooms').findOne({
     project,
     scope: CHAT_ROOM_SCOPE.PROJECT,
     name: { $regex: /default|main|general/i },
@@ -263,7 +272,7 @@ export function getOrCreateDefaultRoom(db, project) {
     return existingRoom;
   }
 
-  const result = createRoom(db, {
+  const result = await createRoom(db, {
     name: `${project}-default`,
     scope: CHAT_ROOM_SCOPE.PROJECT,
     project,

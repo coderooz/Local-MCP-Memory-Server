@@ -16,11 +16,11 @@ npm install
 
 ### Environment Variables
 
-Create a `.env` file for MongoDB configuration:
+Create a `.env` file for server configuration (optional — the database is embedded SQLite):
 
 ```
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB_NAME=local_mcp_memory
+# MCP_DB_PATH=./data/mcp-memory.db
+# MCP_PROJECT=local-mcp-memory
 ```
 
 ### Running the Server

@@ -1,7 +1,7 @@
 ---
 name: 🐛 Bug Report
 about: Report something that is not working correctly
-title: "[BUG] "
+title: '[BUG] '
 labels: bug
 ---
 
@@ -25,9 +25,9 @@ What actually happened?
 
 ## 🔁 Steps to Reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ---
 
@@ -54,7 +54,7 @@ What actually happened?
 
 - OS:
 - Node.js:
-- MongoDB:
+- Database (SQLite file / `MCP_DB_PATH`):
 
 ---
 
@@ -68,7 +68,7 @@ What actually happened?
 
 ## 📂 Affected Files
 
-- 
+- (list the files you changed)
 
 ---
 

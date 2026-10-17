@@ -1,7 +1,7 @@
 ---
 name: 🧠 General Issue
 about: Use this for complex, cross-system, or unclear issues
-title: "[GENERAL] "
+title: '[GENERAL] '
 labels: discussion
 ---
 
@@ -12,6 +12,7 @@ labels: discussion
 Thanks for taking the time to report an issue or suggest an improvement 🚀
 
 This template is designed for:
+
 - complex problems
 - cross-system issues (memory + tasks + agents)
 - unclear or exploratory discussions
@@ -39,7 +40,7 @@ Provide a clear explanation of the situation:
 What is happening?
 What are you trying to achieve?
 Why is this important?
-````
+```
 
 ---
 
@@ -66,23 +67,23 @@ Include errors, inconsistencies, or unexpected results
 
 Which parts of the system are involved?
 
-* [ ] Memory system
-* [ ] Task system
-* [ ] Agent system
-* [ ] Messaging system
-* [ ] Project Map
-* [ ] MCP protocol
-* [ ] Other:
+- [ ] Memory system
+- [ ] Task system
+- [ ] Agent system
+- [ ] Messaging system
+- [ ] Project Map
+- [ ] MCP protocol
+- [ ] Other:
 
 ---
 
 ## 🧠 MCP Context
 
-* Agent:
-* MCP tools involved:
-* Was `get_agent_instructions` used? (Yes/No)
-* Memory server running? (Yes/No)
-* Any MCP errors:
+- Agent:
+- MCP tools involved:
+- Was `get_agent_instructions` used? (Yes/No)
+- Memory server running? (Yes/No)
+- Any MCP errors:
 
 ---
 
@@ -90,10 +91,10 @@ Which parts of the system are involved?
 
 If applicable:
 
-* Were tasks involved? (Yes/No)
-* Were messages involved? (Yes/No)
-* Was there coordination between agents?
-* Any duplication or conflict observed?
+- Were tasks involved? (Yes/No)
+- Were messages involved? (Yes/No)
+- Was there coordination between agents?
+- Any duplication or conflict observed?
 
 ---
 
@@ -107,16 +108,15 @@ Describe the sequence of actions or scenario
 
 ## 📦 Environment
 
-* OS: (Windows / Linux / macOS)
-* Node.js:
-* MongoDB:
-* Project (MCP_PROJECT / folder name):
-* Running via:
-
-  * [ ] Codex
-  * [ ] Roo
-  * [ ] CLI
-  * [ ] Other
+- OS: (Windows / Linux / macOS)
+- Node.js:
+- Database (SQLite file / `MCP_DB_PATH`):
+- Project (MCP_PROJECT / folder name):
+- Running via:
+  - [ ] Codex
+  - [ ] Roo
+  - [ ] CLI
+  - [ ] Other
 
 ---
 
@@ -147,28 +147,28 @@ Any ideas for improvement?
 
 ## 🧠 Additional Context
 
-* screenshots
-* architecture notes
-* related issues
-* prior attempts
+- screenshots
+- architecture notes
+- related issues
+- prior attempts
 
 ---
 
 ## 🔍 Checklist
 
-* [ ] I checked existing issues
-* [ ] I provided enough context
-* [ ] I included logs (if applicable)
-* [ ] I understand MCP requires clean stdout
-* [ ] This does not fit other templates
+- [ ] I checked existing issues
+- [ ] I provided enough context
+- [ ] I included logs (if applicable)
+- [ ] I understand MCP requires clean stdout
+- [ ] This does not fit other templates
 
 ---
 
 ## 🤝 Contribution (Optional)
 
-* [ ] I can work on this
-* [ ] I need guidance
-* [ ] Just reporting
+- [ ] I can work on this
+- [ ] I need guidance
+- [ ] Just reporting
 
 ---
 
@@ -178,8 +178,8 @@ This project is evolving into a **multi-agent system platform**.
 
 Issues like this help improve:
 
-* coordination between agents
-* system reliability
-* shared intelligence
+- coordination between agents
+- system reliability
+- shared intelligence
 
 Thanks for contributing 💙

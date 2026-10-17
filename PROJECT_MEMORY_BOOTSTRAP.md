@@ -8,7 +8,7 @@ Use this file to seed durable MCP memory for the `local-mcp-memory` project.
 Type: project-profile
 Title: local-mcp-memory overview
 Context: project bootstrap
-Details: Node.js MCP memory server backed by MongoDB. Provides MCP tools for storing, searching, and tracing reusable memory across agents and sessions.
+Details: Node.js MCP memory server backed by embedded SQLite. Provides MCP tools for storing, searching, and tracing reusable memory across agents and sessions.
 Why: Future agents need the project purpose and runtime model immediately.
 Impact: Treat this repository as the memory-server implementation, not just an app that consumes MCP.
 ```
@@ -19,7 +19,7 @@ Impact: Treat this repository as the memory-server implementation, not just an a
 Type: architecture
 Title: service layout
 Context: server structure
-Details: mcp-server.js is the MCP stdio entrypoint. server.js hosts the HTTP API and MongoDB-backed persistence. startMemoryServer.js ensures the API server starts once. mcp.model.js defines memory models and query building. logger.js writes operational logs and error-derived context.
+Details: mcp-server.js is the MCP stdio entrypoint. server.js hosts the HTTP API and SQLite-backed persistence. startMemoryServer.js ensures the API server starts once. mcp.model.js defines memory models and query building. logger.js writes operational logs and error-derived context.
 Why: Future work often touches the protocol layer and persistence layer together.
 Impact: Keep MCP transport concerns separate from HTTP persistence concerns.
 ```
@@ -39,9 +39,9 @@ Impact: Verify launch configuration before debugging memory attribution problems
 
 ```text
 Type: pattern
-Title: memory search depends on Mongo text indexes
+Title: memory search depends on SQLite FTS5 indexes
 Context: /context/search
-Details: Search uses MongoDB text search plus app-side ranking by keyword overlap, importance, recency, and access count. Required indexes are created during API startup.
+Details: Search uses SQLite FTS5 search plus app-side ranking by keyword overlap, importance, recency, and access count. Required indexes are created during API startup.
 Why: Search quality and runtime correctness depend on the indexes existing before requests are served.
 Impact: Preserve index initialization when changing startup or search logic.
 ```
@@ -64,7 +64,7 @@ Use the following entries to bootstrap the structured project map for this repos
 ```text
 Path: .
 Type: project
-Summary: Distributed MCP memory server for multi-agent coordination with MongoDB-backed persistence, task management, messaging, agent registration, and reusable project intelligence.
+Summary: Distributed MCP memory server for multi-agent coordination with SQLite-backed persistence, task management, messaging, agent registration, and reusable project intelligence.
 Key Details:
 - Core runtime is split between MCP stdio transport and Express persistence API.
 - Project identity is derived from nearest root markers and slugified for stable namespaces.
@@ -86,7 +86,7 @@ Path: server.js
 Type: module
 Summary: Express API and persistence orchestration layer that handles contexts, actions, sessions, agents, tasks, messages, logs, and project-map entries.
 Key Details:
-- Creates Mongo indexes during startup.
+- Creates SQLite indexes during startup.
 - Enforces project-scoped task/message/project-map retrieval patterns.
 - Upserts project-map entries by project plus file_path.
 ```
@@ -124,7 +124,7 @@ Key Details:
 ```text
 Path: logger.js
 Type: module
-Summary: Writes operational logs to MongoDB and promotes errors into reusable memory entries for future debugging.
+Summary: Writes operational logs to the SQLite database and promotes errors into reusable memory entries for future debugging.
 Key Details:
 - Keeps logs out of MCP stdout.
 - Converts runtime errors into global context entries with metadata.
@@ -144,6 +144,7 @@ Key Details:
 Store the entries above when starting fresh on a new database or after major architectural changes.
 
 Then add entries for:
+
 - deployment and startup expectations
 - naming and coding conventions
 - known recurring bugs

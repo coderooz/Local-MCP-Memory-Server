@@ -11,7 +11,7 @@ import { findProjectRoot, slugifyProjectName } from '../../utils/projectIdentity
 
 const exec = promisify(execCb);
 
-const RUNTIME_FILE_NAME = '.mcp-runtime.json';
+const RUNTIME_FILE_BASE = '.mcp-runtime.json';
 const RUNTIME_LOCK_TIMEOUT = 5000;
 const LOCK_RETRY_DELAY_MS = 50;
 const LOCK_STALE_MS = 30000;
@@ -30,7 +30,7 @@ let inMemoryRuntime = {
   hostname: null,
   status: 'stopped',
   project: null,
-  signature: null
+  signature: null,
 };
 
 const runtimeEmitter = new EventEmitter();
@@ -103,7 +103,7 @@ function normalizeRuntime(runtime, projectName = null) {
     status: runtime.status || 'running',
     project: resolveProjectName(runtime.project || projectName),
     signature: runtime.signature || PROCESS_SIGNATURE,
-    lastUpdated: now
+    lastUpdated: now,
   };
 }
 
@@ -114,7 +114,7 @@ export function resolveProjectContext(projectName = null, projectRoot = null) {
   currentProjectName = resolvedProject;
   return {
     projectRoot: resolvedRoot,
-    projectName: resolvedProject
+    projectName: resolvedProject,
   };
 }
 
@@ -134,7 +134,13 @@ export function getRuntimeFilePath(projectName = null) {
   if (projectName) {
     setCurrentProject(projectName);
   }
-  return path.join(getRuntimeDirectory(), RUNTIME_FILE_NAME);
+  // File naming derives from the project DIRECTORY name, never from MCP_PROJECT.
+  // Identity/scoping still flows through resolveProjectName() (the `project` field),
+  // but a mis-set MCP_PROJECT (e.g. a global OpenCode config) must not rename this
+  // project's runtime file — readers and writers must both resolve to the same path.
+  const runtimeDirectory = getRuntimeDirectory();
+  const fileStem = slugifyProjectName(path.basename(runtimeDirectory));
+  return path.join(runtimeDirectory, `${fileStem}.mcp-runtime.json`);
 }
 
 async function acquireFileLock(filePath, timeout = RUNTIME_LOCK_TIMEOUT, staleMs = LOCK_STALE_MS) {
@@ -148,7 +154,7 @@ async function acquireFileLock(filePath, timeout = RUNTIME_LOCK_TIMEOUT, staleMs
         JSON.stringify(
           {
             pid: process.pid,
-            createdAt: Date.now()
+            createdAt: Date.now(),
           },
           null,
           2
@@ -333,7 +339,7 @@ export async function validatePortWithHealth(port, options = {}) {
     expectedProject = null,
     expectedSignature = null,
     requireSignature = false,
-    timeoutMs = getConfigValue('connection.healthCheck.timeout', 5000)
+    timeoutMs = getConfigValue('connection.healthCheck.timeout', 5000),
   } = options;
 
   if (!ensureValidPort(port)) {
@@ -351,7 +357,7 @@ export async function validatePortWithHealth(port, options = {}) {
     const response = await fetch(`http://localhost:${port}/health`, {
       method: 'GET',
       headers: { 'X-MCP-Health-Check': 'true' },
-      signal: controller.signal
+      signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
@@ -370,7 +376,7 @@ export async function validatePortWithHealth(port, options = {}) {
         reason: 'project_mismatch',
         port,
         expectedProject,
-        observedProject: data.project
+        observedProject: data.project,
       };
     }
 
@@ -384,7 +390,7 @@ export async function validatePortWithHealth(port, options = {}) {
         reason: 'signature_mismatch',
         port,
         expectedSignature,
-        observedSignature: data.signature
+        observedSignature: data.signature,
       };
     }
 
@@ -398,25 +404,21 @@ export async function validatePortWithHealth(port, options = {}) {
         project: data.project,
         uptime: data.uptime,
         pid: data.pid,
-        signature: data.signature
-      }
+        signature: data.signature,
+      },
     };
   } catch (error) {
     return {
       valid: false,
       reason: 'health_check_error',
       port,
-      error: error.message
+      error: error.message,
     };
   }
 }
 
 export async function validateRuntime(runtime, options = {}) {
-  const {
-    expectedProject = null,
-    expectedSignature = null,
-    requireSignature = true
-  } = options;
+  const { expectedProject = null, expectedSignature = null, requireSignature = true } = options;
 
   if (!runtime || runtime.status === 'stopped') {
     return { valid: false, reason: 'runtime_stopped' };
@@ -436,7 +438,7 @@ export async function validateRuntime(runtime, options = {}) {
       valid: false,
       reason: 'project_mismatch',
       expectedProject,
-      observedProject: project
+      observedProject: project,
     };
   }
 
@@ -449,7 +451,7 @@ export async function validateRuntime(runtime, options = {}) {
       valid: false,
       reason: 'signature_mismatch',
       expectedSignature,
-      observedSignature: runtime.signature
+      observedSignature: runtime.signature,
     };
   }
 
@@ -458,14 +460,14 @@ export async function validateRuntime(runtime, options = {}) {
     return {
       valid: false,
       reason: 'pid_not_alive',
-      pid: runtime.pid
+      pid: runtime.pid,
     };
   }
 
   const healthValidation = await validatePortWithHealth(runtime.port, {
     expectedProject: project,
     expectedSignature: runtime.signature || expectedSignature,
-    requireSignature
+    requireSignature,
   });
 
   if (!healthValidation.valid) {
@@ -477,7 +479,7 @@ export async function validateRuntime(runtime, options = {}) {
       valid: false,
       reason: 'pid_mismatch',
       runtimePid: runtime.pid,
-      healthPid: healthValidation.data.pid
+      healthPid: healthValidation.data.pid,
     };
   }
 
@@ -486,8 +488,8 @@ export async function validateRuntime(runtime, options = {}) {
     reason: 'ok',
     data: {
       ...normalizeRuntime(runtime, project),
-      health: healthValidation.data
-    }
+      health: healthValidation.data,
+    },
   };
 }
 
@@ -557,7 +559,7 @@ export async function scanActiveMcpServers(options = {}) {
     portsToCheck.map(async (port) => {
       const validation = await validatePortWithHealth(port, {
         expectedProject,
-        timeoutMs
+        timeoutMs,
       });
       if (!validation.valid) {
         return null;
@@ -568,7 +570,7 @@ export async function scanActiveMcpServers(options = {}) {
         pid: validation.data?.pid || null,
         project: validation.data?.project || expectedProject || resolveProjectName(),
         signature: validation.data?.signature || null,
-        uptime: validation.data?.uptime || 0
+        uptime: validation.data?.uptime || 0,
       };
     })
   );
@@ -598,7 +600,7 @@ export async function recoverRuntimeFromActiveServers(options = {}) {
       signature: selected.signature,
       startedAt: Date.now() - Math.max(0, Number(selected.uptime || 0) * 1000),
       hostname: os.hostname(),
-      status: 'running'
+      status: 'running',
     },
     projectName
   );
@@ -622,7 +624,7 @@ export function getRuntimeState() {
 export function updateRuntimeState(updates) {
   inMemoryRuntime = {
     ...inMemoryRuntime,
-    ...updates
+    ...updates,
   };
   runtimeEmitter.emit('state:updated', { ...inMemoryRuntime });
   return { ...inMemoryRuntime };
@@ -652,7 +654,7 @@ export async function discoverPort(_fallbackPorts = null, options = {}) {
 
   if (lastKnownPort && Date.now() - lastPortCheck < PORT_CACHE_TTL) {
     const validation = await validatePortWithHealth(lastKnownPort, {
-      expectedProject
+      expectedProject,
     });
     if (validation.valid) {
       return {
@@ -660,7 +662,7 @@ export async function discoverPort(_fallbackPorts = null, options = {}) {
         pid: validation.data?.pid || null,
         signature: validation.data?.signature || null,
         project: validation.data?.project || expectedProject,
-        fromCache: true
+        fromCache: true,
       };
     }
   }
@@ -678,7 +680,7 @@ export async function discoverPort(_fallbackPorts = null, options = {}) {
     pid: selected.pid,
     signature: selected.signature,
     project: selected.project,
-    fromCache: false
+    fromCache: false,
   };
 }
 
@@ -702,7 +704,7 @@ export async function setMcpRunning(
       hostname: os.hostname(),
       status: 'running',
       project: resolvedProject,
-      signature
+      signature,
     },
     resolvedProject
   );
@@ -733,7 +735,7 @@ export async function setMcpStopped(options = {}) {
     hostname: null,
     status: 'stopped',
     project: resolveProjectName(projectName),
-    signature: null
+    signature: null,
   };
 
   runtimeEmitter.emit('state:updated', { ...inMemoryRuntime });
@@ -748,7 +750,7 @@ export async function isMcpRunning() {
   const validation = await validateRuntime(inMemoryRuntime, {
     expectedProject: inMemoryRuntime.project,
     expectedSignature: inMemoryRuntime.signature,
-    requireSignature: true
+    requireSignature: true,
   });
   return validation.valid;
 }
@@ -761,7 +763,7 @@ export function invalidateRuntime() {
     hostname: null,
     status: 'stopped',
     project: resolveProjectName(),
-    signature: null
+    signature: null,
   };
   runtimeEmitter.emit('state:invalidated');
 }

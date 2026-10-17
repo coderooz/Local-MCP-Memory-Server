@@ -2,7 +2,7 @@
 
 import dotenv from 'dotenv';
 import express from 'express';
-import { MongoClient } from 'mongodb';
+import { initializeDatabase, disconnectDatabase } from './src/core/database/sqlite/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -53,7 +53,13 @@ import {
 } from './utils/resetEngine.js';
 import { recordActivity } from './utils/activityTracker.js';
 import { routeHandler } from './utils/routeHandler.js';
-import { validateInput, sanitizeSearchQuery, validateProjectName, validateAgentId, createErrorResponse } from './utils/security-validators.js';
+import {
+  validateInput,
+  sanitizeSearchQuery,
+  validateProjectName,
+  validateAgentId,
+  createErrorResponse,
+} from './utils/security-validators.js';
 import { resolveProjectIdentity } from './utils/projectIdentity.js';
 import { getEmulatorPlugin } from './plugins/emulator/index.js';
 import { getPortRegistry, MCPLogger } from './utils/mcp-port-registry.js';
@@ -64,7 +70,8 @@ import {
   readRuntimeFile,
   validateRuntime,
   recoverRuntimeFromActiveServers,
-  withProjectLock
+  withProjectLock,
+  getRuntimeFilePath,
 } from './core/config/runtime-state.js';
 import { PROJECT_NAME } from './core/config/project-config-loader.js';
 import { getPortManager } from './core/config/portManager.js';
@@ -124,7 +131,7 @@ dotenv.config({
   quiet: true,
 });
 
-const DB_NAME = process.env.MONGO_DB_NAME || 'mcp_memory';
+const DB_NAME = process.env.MCP_DB_NAME || 'mcp-memory';
 const DEFAULT_PORT = Number(process.env.PORT || 0);
 const eventBus = createEventBus();
 
@@ -132,9 +139,23 @@ const app = express();
 app.use(express.json());
 
 import { rateLimiter, agentRateLimiter } from './utils/rate-limiter.js';
+import { getAuthManager, optionalAuth } from './src/core/auth/index.js';
+import { registerAuthRoutes } from './src/core/auth/routes.js';
+import { registerDashboardRoutes } from './dashboard/routes.js';
+import { registerMCPRegistryRoutes } from './src/core/mcp-registry/routes.js';
 
 app.use(rateLimiter);
 app.use(agentRateLimiter);
+
+// Initialize auth system and register auth routes
+const authManager = getAuthManager();
+registerAuthRoutes(app);
+
+// Register dashboard routes
+registerDashboardRoutes(app);
+
+// Register MCP registry routes
+registerMCPRegistryRoutes(app);
 
 app.use(sessionAwareMiddleware({ autoCreate: true }));
 
@@ -428,83 +449,12 @@ async function trackCollaborationWarnings(
   return activityIds;
 }
 
-async function ensureIndexes(database) {
-  await Promise.all([
-    database.collection('contexts').createIndex({ id: 1 }, { unique: true }),
-    database.collection('contexts').createIndex({
-      content: 'text',
-      summary: 'text',
-      tags: 'text',
-    }),
-    database.collection('contexts').createIndex({
-      project: 1,
-      type: 1,
-      lifecycle: 1,
-      updatedAt: -1,
-    }),
-    database.collection('contexts').createIndex({ project: 1, conflictsWith: 1 }),
-    database.collection('actions').createIndex({ id: 1 }, { unique: true }),
-    database.collection('actions').createIndex({ contextRefs: 1 }),
-    database.collection('sessions').createIndex({ sessionId: 1 }, { unique: true }),
-    database.collection('logs').createIndex({ createdAt: -1 }),
-    database.collection('agents').createIndex({ agent_id: 1 }, { unique: true }),
-    database.collection('agents').createIndex({ project: 1, status: 1, last_seen: -1 }),
-    database.collection('tasks').createIndex({ task_id: 1 }, { unique: true }),
-    database.collection('tasks').createIndex({ project: 1, status: 1, priority: -1 }),
-    database.collection('tasks').createIndex({ project: 1, assigned_to: 1, updatedAt: -1 }),
-    database.collection('messages').createIndex({ message_id: 1 }, { unique: true }),
-    database.collection('messages').createIndex({ project: 1, to_agent: 1, createdAt: -1 }),
-    database.collection('project_map').createIndex({ project: 1, file_path: 1 }),
-    database.collection('project_map').createIndex({ project: 1, type: 1, updatedAt: -1 }),
-    database.collection('project_map').createIndex({
-      file_path: 'text',
-      summary: 'text',
-      key_details: 'text',
-      dependencies: 'text',
-      exports: 'text',
-      tags: 'text',
-    }),
-    database
-      .collection('memory_versions')
-      .createIndex({ context_id: 1, context_version: -1 }, { unique: true }),
-    database.collection('memory_versions').createIndex({ project: 1, changedAt: -1 }),
-    database.collection('issues').createIndex({ issue_id: 1 }, { unique: true }),
-    database.collection('issues').createIndex({ project: 1, status: 1, type: 1, updatedAt: -1 }),
-    database.collection('issues').createIndex({ relatedTasks: 1 }),
-    database.collection('issues').createIndex({ relatedContexts: 1 }),
-    database.collection('activity').createIndex({ activity_id: 1 }, { unique: true }),
-    database.collection('activity').createIndex({ project: 1, timestamp: -1 }),
-    database.collection('activity').createIndex({ project: 1, related_task: 1, timestamp: -1 }),
-    database.collection('resource_locks').createIndex({ lock_id: 1 }, { unique: true }),
-    database
-      .collection('resource_locks')
-      .createIndex({ project: 1, resource: 1, locked_by: 1 }, { unique: true }),
-    database.collection('resource_locks').createIndex({ expiresAt: 1 }),
-    database.collection('metrics').createIndex({ metric_id: 1 }, { unique: true }),
-    database.collection('metrics').createIndex({
-      project: 1,
-      metric_type: 1,
-      name: 1,
-      recordedAt: -1,
-    }),
-    database.collection('feedbacks').createIndex({ feedback_id: 1 }, { unique: true }),
-    database.collection('feedbacks').createIndex({
-      project: 1,
-      status: 1,
-      type: 1,
-      severity: 1,
-      createdAt: -1,
-    }),
-    database.collection('feedbacks').createIndex({ related_contexts: 1 }),
-    database.collection('feedbacks').createIndex({ related_tasks: 1 }),
-    database.collection('feedbacks').createIndex({ voters: 1 }),
-    database.collection('chat_rooms').createIndex({ room_id: 1 }, { unique: true }),
-    database.collection('chat_rooms').createIndex({ project: 1, scope: 1 }),
-    database.collection('chat_rooms').createIndex({ participants: 1 }),
-    database.collection('chat_messages').createIndex({ message_id: 1 }, { unique: true }),
-    database.collection('chat_messages').createIndex({ room_id: 1, createdAt: -1 }),
-    database.collection('chat_messages').createIndex({ from_agent: 1, createdAt: -1 }),
-  ]);
+/**
+ * ensureIndexes - No-op for SQLite.
+ * Indexes are created in the schema module during database initialization.
+ */
+async function ensureIndexes(_database) {
+  // SQLite indexes are created in src/core/database/sqlite/schema.js during initialization.
 }
 
 async function buildDerivedTaskState(database, taskInput) {
@@ -884,12 +834,20 @@ app.post(
     let ids = [];
 
     try {
-      const baseQuery = MemoryQueryBuilder.build({
-        agent,
-        project,
-        query: sanitizedQuery,
-        lifecycle,
-      });
+      // Dashboard callers (and the app E2E suite) search with a bare query:
+      // no agent, no project. MemoryQueryBuilder would then constrain the
+      // scope to `global` only, hiding every private/project-scoped memory
+      // that POST /context stored with its default scope. Mirror the
+      // "no anchor -> no filter" contract already used by /task/list and
+      // /activity for unanchored reads; anchored searches keep the
+      // private/project/global scope rules intact.
+      const baseQuery =
+        agent || project
+          ? MemoryQueryBuilder.build({ agent, project, query: sanitizedQuery, lifecycle })
+          : {
+              ...(sanitizedQuery ? { $text: { $search: sanitizedQuery } } : {}),
+              ...(lifecycle ? { lifecycle } : {}),
+            };
 
       const results = await collection.find(baseQuery).limit(50).toArray();
       ranked = rankSearchResults(results, sanitizedQuery).slice(0, safeLimit);
@@ -2046,7 +2004,7 @@ app.get('/health', async (req, res) => {
     uptime: Math.floor((Date.now() - SERVER_START_TIME) / 1000),
     uptimeFormatted: formatUptime((Date.now() - SERVER_START_TIME) / 1000),
     timestamp: new Date().toISOString(),
-    version: '2.5.0',
+    version: '2.6.0',
     server: 'local-mcp-memory',
     project: activeProjectName || process.env.MCP_PROJECT || 'local-mcp-memory',
     pid: process.pid,
@@ -2085,7 +2043,7 @@ app.get('/health', async (req, res) => {
     healthData.sessions = {
       active: sessionStats.activeSessions || 0,
       idle: sessionStats.idleSessions || 0,
-      total: sessionStats.totalSessions || 0
+      total: sessionStats.totalSessions || 0,
     };
   } catch {
     healthData.sessions = { error: 'unavailable' };
@@ -2126,7 +2084,7 @@ app.get('/health/detailed', async (_req, res) => {
       .then((m) => ({ portRegistry: m.getPortRegistry().getStatus() }))
       .catch(() => ({})),
     server: {
-      version: '2.5.0',
+      version: '2.6.0',
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
@@ -3142,7 +3100,7 @@ export async function startServer({
   autoDiscoverPort = true,
   healthCheck = true,
   retryStrategy = null,
-  connectionTimeout = 30000
+  connectionTimeout = 30000,
 } = {}) {
   if (server) {
     return { app, db: getDb(), server, port: activeServerPort };
@@ -3162,7 +3120,7 @@ export async function startServer({
         const runtimeValidation = await validateRuntime(runtimeFromFile, {
           expectedProject: projectName,
           expectedSignature: runtimeFromFile.signature,
-          requireSignature: true
+          requireSignature: true,
         });
 
         if (runtimeValidation.valid && runtimeFromFile.pid !== process.pid) {
@@ -3175,7 +3133,7 @@ export async function startServer({
             db: null,
             server: null,
             port: runtimeFromFile.port,
-            reusedExisting: true
+            reusedExisting: true,
           };
         }
 
@@ -3187,7 +3145,7 @@ export async function startServer({
         const recoveredValidation = await validateRuntime(recoveredRuntime, {
           expectedProject: projectName,
           expectedSignature: recoveredRuntime.signature,
-          requireSignature: true
+          requireSignature: true,
         });
 
         if (recoveredValidation.valid && recoveredRuntime.pid !== process.pid) {
@@ -3200,14 +3158,12 @@ export async function startServer({
             db: null,
             server: null,
             port: recoveredRuntime.port,
-            reusedExisting: true
+            reusedExisting: true,
           };
         }
       }
 
-      client = new MongoClient(process.env.MONGO_URI);
-      await client.connect();
-      db = client.db(DB_NAME);
+      db = await initializeDatabase();
       initLogger(db);
 
       await ensureIndexes(db);
@@ -3216,7 +3172,7 @@ export async function startServer({
       app.locals.db = db;
       app.locals.logError = logError;
 
-      await logInfo('MongoDB connected', { dbName: DB_NAME });
+      await logInfo('SQLite database connected', { dbName: 'mcp-memory' });
 
       const portManager = getPortManager();
       const requestedPort = port > 0 ? port : null;
@@ -3240,7 +3196,9 @@ export async function startServer({
           await closeListener(listener);
 
           const isRetryable =
-            error?.code === 'EADDRINUSE' || error?.code === 'EACCES' || error?.code === 'ERR_SERVER_ALREADY_LISTEN';
+            error?.code === 'EADDRINUSE' ||
+            error?.code === 'EACCES' ||
+            error?.code === 'ERR_SERVER_ALREADY_LISTEN';
           if (!isRetryable || attempt === 3) {
             break;
           }
@@ -3279,9 +3237,7 @@ export async function startServer({
 
       if (!silent) {
         process.stderr.write(`MCP Server running on port ${actualPort}\n`);
-        process.stderr.write(
-          `[MCP] Runtime file registered at: ${path.join(projectRoot, '.mcp-runtime.json')}\n`
-        );
+        process.stderr.write(`[MCP] Runtime file registered at: ${getRuntimeFilePath()}\n`);
       }
 
       return { app, db, server, port: actualPort, reusedExisting: false };
@@ -3294,10 +3250,9 @@ export async function startServer({
 
       await closeListener(listener);
 
-      if (client) {
-        await client.close();
-      }
-      client = null;
+      try {
+        await disconnectDatabase();
+      } catch {}
 
       throw error;
     });
@@ -3311,9 +3266,9 @@ export async function stopServer() {
     await new Promise((resolve) => server.close(resolve));
   }
 
-  if (client) {
-    await client.close();
-  }
+  try {
+    await disconnectDatabase();
+  } catch {}
 
   try {
     await setMcpStopped();

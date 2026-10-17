@@ -52,7 +52,7 @@ function buildDefaultConfig(projectName) {
     project: {
       name: projectName,
       scope: 'project',
-      environment: process.env.NODE_ENV || 'development'
+      environment: process.env.NODE_ENV || 'development',
     },
     connection: {
       strategy: 'runtime-first',
@@ -64,7 +64,7 @@ function buildDefaultConfig(projectName) {
         maxRetries: 5,
         backoff: 'exponential',
         baseDelay: 200,
-        maxDelay: 3200
+        maxDelay: 3200,
       },
       timeout: 30000,
       maxConcurrentRequests: 10,
@@ -72,22 +72,22 @@ function buildDefaultConfig(projectName) {
         enabled: true,
         timeout: 5000,
         retries: 3,
-        interval: 30000
-      }
+        interval: 30000,
+      },
     },
     agent: {
       defaultAgent: 'mcp-orchestrator',
       autoRegister: true,
       heartbeatInterval: 30000,
       permissions: {
-        allowToolExecution: true
+        allowToolExecution: true,
       },
       behavior: {
         autoOptimize: true,
         allowSelfModification: false,
         maxRetainedContexts: 100,
-        autoMemoryCleanup: true
-      }
+        autoMemoryCleanup: true,
+      },
     },
     behavior: {
       ignore: [
@@ -98,10 +98,10 @@ function buildDefaultConfig(projectName) {
         'build/',
         '.next/',
         'coverage/',
-        '*.log'
+        '*.log',
       ],
       askBefore: ['destructive_actions'],
-      autoApprove: ['read_operations']
+      autoApprove: ['read_operations'],
     },
     features: {
       multiAgent: true,
@@ -109,51 +109,52 @@ function buildDefaultConfig(projectName) {
       messaging: true,
       feedback: true,
       emulator: true,
+      mcpRegistry: true,
       memory: {
         enabled: true,
         optimization: true,
-        versioning: true
+        versioning: true,
       },
       tasks: {
         concurrency: 'atomic',
         retry: true,
-        maxRetries: 3
-      }
+        maxRetries: 3,
+      },
     },
     security: {
       inputSanitization: true,
       agentIsolation: true,
-      idempotency: true
+      idempotency: true,
     },
     logging: {
       level: 'minimal',
       errorsOnly: true,
-      enabled: true
+      enabled: true,
     },
     rules: {
       ignore: ['node_modules/', '.git/', 'dist/', 'build/', '.next/', 'coverage/', '*.log'],
       protected: ['core/', 'infrastructure/'],
-      scanExtensions: ['.js', '.ts', '.jsx', '.tsx', '.json', '.md', '.yml', '.yaml']
+      scanExtensions: ['.js', '.ts', '.jsx', '.tsx', '.json', '.md', '.yml', '.yaml'],
     },
     execution: {
       parallelAgents: true,
       maxAgents: 10,
-      agentTimeout: 60000
+      agentTimeout: 60000,
     },
     setup: {
       autoConfigure: true,
       autoHeal: true,
       maxSetupAttempts: 3,
       requiredEnvVars: ['MCP_SCOPE', 'MCP_PROJECT'],
-      optionalEnvVars: ['MCP_AGENT', 'NODE_ENV', 'LOG_LEVEL']
+      optionalEnvVars: ['MCP_AGENT', 'NODE_ENV', 'LOG_LEVEL'],
     },
     plugins: {
       emulator: {
         enabled: true,
-        autoDetect: true
-      }
+        autoDetect: true,
+      },
     },
-    policies: {}
+    policies: {},
   };
 }
 
@@ -179,7 +180,10 @@ function mergeDeep(target, source) {
 
 const PROJECT_ROOT = resolveProjectRoot();
 const PROJECT_NAME = getProjectName(PROJECT_ROOT);
-const CONFIG_FILE = `${PROJECT_NAME}.project-mcp.json`;
+// Config FILE name derives from the project DIRECTORY name, never from MCP_PROJECT.
+// PROJECT_NAME remains the env-aware identity used inside the config content, so a
+// mis-set MCP_PROJECT cannot rename (and orphan) this project's config file.
+const CONFIG_FILE = `${slugifyProjectName(path.basename(PROJECT_ROOT))}.project-mcp.json`;
 const FORBIDDEN_KEYS = [
   'mongodb:',
   'password',
@@ -189,7 +193,7 @@ const FORBIDDEN_KEYS = [
   'api_key',
   'port',
   'pid',
-  'runtime'
+  'runtime',
 ];
 
 const DEFAULT_CONFIG = buildDefaultConfig(PROJECT_NAME);
@@ -235,7 +239,7 @@ function validateConfig(config) {
 
   return {
     valid: issues.length === 0,
-    issues
+    issues,
   };
 }
 
@@ -334,9 +338,7 @@ function getProjectConfig() {
   if (loadedConfig) {
     const migrated = migrateConfig(loadedConfig);
     const validation = validateConfig(migrated);
-    cachedConfig = validation.valid
-      ? mergeDeep(DEFAULT_CONFIG, migrated)
-      : { ...DEFAULT_CONFIG };
+    cachedConfig = validation.valid ? mergeDeep(DEFAULT_CONFIG, migrated) : { ...DEFAULT_CONFIG };
     if (!validation.valid) {
       logToStderr('WARN', `Config issues detected. Using defaults where required.`);
     }
@@ -434,7 +436,7 @@ function getRedisConfig() {
   return getConfigValue('redis', {
     enabled: false,
     url: 'redis://localhost:6379',
-    fallbackToMemory: true
+    fallbackToMemory: true,
   });
 }
 
@@ -442,14 +444,14 @@ function getBrowserConfig() {
   return getConfigValue('browser', {
     enabled: false,
     headless: true,
-    timeout: 30000
+    timeout: 30000,
   });
 }
 
 function getKnowledgeBaseConfig() {
   return getConfigValue('knowledgeBase', {
     enabled: false,
-    storage: 'mongodb'
+    storage: 'mongodb',
   });
 }
 
@@ -484,5 +486,5 @@ export {
   isPathProtected,
   DEFAULT_CONFIG,
   CONFIG_FILE,
-  PROJECT_NAME
+  PROJECT_NAME,
 };

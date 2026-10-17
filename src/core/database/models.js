@@ -4,21 +4,21 @@ import { getDb } from './connection.js';
 export const MEMORY_SCOPE = {
   PRIVATE: 'private',
   PROJECT: 'project',
-  GLOBAL: 'global'
+  GLOBAL: 'global',
 };
 
 export const MEMORY_LIFECYCLE = {
   DRAFT: 'draft',
   ACTIVE: 'active',
   DEPRECATED: 'deprecated',
-  ARCHIVED: 'archived'
+  ARCHIVED: 'archived',
 };
 
 export const PROJECT_CATEGORY = {
   BACKEND: 'backend',
   FRONTEND: 'frontend',
   AI_SYSTEM: 'ai-system',
-  INFRA: 'infra'
+  INFRA: 'infra',
 };
 
 export function toStringArray(value) {
@@ -42,7 +42,7 @@ export function clampNumber(value, min, max, fallback) {
 function normalizeRelationships(value = {}) {
   return {
     parent: typeof value.parent === 'string' && value.parent.trim() ? value.parent : null,
-    children: toStringArray(value.children)
+    children: toStringArray(value.children),
   };
 }
 
@@ -61,7 +61,7 @@ function normalizeProjectDescriptor(descriptor = {}) {
     tech_stack: toStringArray(value.tech_stack),
     goals: toStringArray(value.goals),
     constraints: toStringArray(value.constraints),
-    rules: toStringArray(value.rules)
+    rules: toStringArray(value.rules),
   };
 }
 
@@ -74,7 +74,7 @@ export function buildProjectDescriptorContent(descriptorInput = {}) {
     descriptor.tech_stack.length ? `Tech Stack: ${descriptor.tech_stack.join(', ')}` : null,
     descriptor.goals.length ? `Goals: ${descriptor.goals.join(' | ')}` : null,
     descriptor.constraints.length ? `Constraints: ${descriptor.constraints.join(' | ')}` : null,
-    descriptor.rules.length ? `Rules: ${descriptor.rules.join(' | ')}` : null
+    descriptor.rules.length ? `Rules: ${descriptor.rules.join(' | ')}` : null,
   ];
 
   return sections.filter(Boolean).join('\n');
@@ -142,7 +142,7 @@ export class ProjectDescriptorModel extends ContextModel {
       summary: data.summary || `${descriptor.name} project descriptor for ${descriptor.category}`,
       content: data.content || buildProjectDescriptorContent(descriptor),
       tags,
-      projectDescriptor: descriptor
+      projectDescriptor: descriptor,
     });
   }
 }
@@ -179,7 +179,7 @@ export class ActionModel extends BaseModel {
 
     this.outcome = data.outcome || {
       success: true,
-      error: null
+      error: null,
     };
   }
 }
@@ -314,131 +314,18 @@ export function normalizeMemory(memory) {
     lastAccessedAt: memory.lastAccessedAt || null,
     lifecycle: memory.lifecycle || MEMORY_LIFECYCLE.ACTIVE,
     createdAt: memory.createdAt || new Date(),
-    updatedAt: new Date()
+    updatedAt: new Date(),
   };
 }
 
-export async function ensureIndexes(database) {
-  await Promise.all([
-    database.collection('contexts').createIndex({ id: 1 }, { unique: true }),
-    database.collection('contexts').createIndex({
-      content: 'text',
-      summary: 'text',
-      tags: 'text'
-    }),
-    database.collection('contexts').createIndex({
-      project: 1,
-      type: 1,
-      lifecycle: 1,
-      updatedAt: -1
-    }),
-    database.collection('contexts').createIndex({ project: 1, conflictsWith: 1 }),
-    database.collection('contexts').createIndex({ sessionId: 1 }),
-    database.collection('contexts').createIndex({ agent: 1, project: 1 }),
-
-    database.collection('actions').createIndex({ id: 1 }, { unique: true }),
-    database.collection('actions').createIndex({ contextRefs: 1 }),
-    database.collection('actions').createIndex({ sessionId: 1 }),
-    database.collection('actions').createIndex({ agent: 1, project: 1 }),
-
-    database.collection('sessions').createIndex({ sessionId: 1 }, { unique: true }),
-    database.collection('sessions').createIndex({ status: 1, lastHeartbeat: -1 }),
-    database.collection('sessions').createIndex({ agent: 1, project: 1 }),
-
-    database.collection('logs').createIndex({ createdAt: -1 }),
-    database.collection('logs').createIndex({ sessionId: 1 }),
-    database.collection('logs').createIndex({ agent: 1, project: 1 }),
-    database.collection('logs').createIndex({ type: 1, createdAt: -1 }),
-
-    database.collection('agents').createIndex({ agent_id: 1 }, { unique: true }),
-    database.collection('agents').createIndex({ project: 1, status: 1, last_seen: -1 }),
-    database.collection('agents').createIndex({ sessionId: 1 }),
-
-    database.collection('tasks').createIndex({ task_id: 1 }, { unique: true }),
-    database.collection('tasks').createIndex({ project: 1, status: 1, priority: -1 }),
-    database.collection('tasks').createIndex({ project: 1, assigned_to: 1, updatedAt: -1 }),
-    database.collection('tasks').createIndex({ sessionId: 1 }),
-    database.collection('tasks').createIndex({ agent: 1, project: 1 }),
-
-    database.collection('messages').createIndex({ message_id: 1 }, { unique: true }),
-    database.collection('messages').createIndex({ project: 1, to_agent: 1, createdAt: -1 }),
-    database.collection('messages').createIndex({ sessionId: 1 }),
-
-    database.collection('project_map').createIndex({ project: 1, file_path: 1 }),
-    database.collection('project_map').createIndex({ project: 1, type: 1, updatedAt: -1 }),
-    database.collection('project_map').createIndex({
-      file_path: 'text',
-      summary: 'text',
-      key_details: 'text',
-      dependencies: 'text',
-      exports: 'text',
-      tags: 'text'
-    }),
-    database.collection('project_map').createIndex({ sessionId: 1 }),
-    database.collection('project_map').createIndex({ agent: 1, project: 1 }),
-
-    database
-      .collection('memory_versions')
-      .createIndex({ context_id: 1, context_version: -1 }, { unique: true }),
-    database.collection('memory_versions').createIndex({ project: 1, changedAt: -1 }),
-    database.collection('memory_versions').createIndex({ sessionId: 1 }),
-
-    database.collection('issues').createIndex({ issue_id: 1 }, { unique: true }),
-    database.collection('issues').createIndex({ project: 1, status: 1, type: 1, updatedAt: -1 }),
-    database.collection('issues').createIndex({ relatedTasks: 1 }),
-    database.collection('issues').createIndex({ relatedContexts: 1 }),
-    database.collection('issues').createIndex({ sessionId: 1 }),
-    database.collection('issues').createIndex({ agent: 1, project: 1 }),
-
-    database.collection('activity').createIndex({ activity_id: 1 }, { unique: true }),
-    database.collection('activity').createIndex({ project: 1, timestamp: -1 }),
-    database.collection('activity').createIndex({ project: 1, related_task: 1, timestamp: -1 }),
-    database.collection('activity').createIndex({ sessionId: 1 }),
-    database.collection('activity').createIndex({ agent: 1, timestamp: -1 }),
-
-    database.collection('resource_locks').createIndex({ lock_id: 1 }, { unique: true }),
-    database
-      .collection('resource_locks')
-      .createIndex({ project: 1, resource: 1, locked_by: 1 }, { unique: true }),
-    database.collection('resource_locks').createIndex({ expiresAt: 1 }),
-
-    database.collection('metrics').createIndex({ metric_id: 1 }, { unique: true }),
-    database.collection('metrics').createIndex({
-      project: 1,
-      metric_type: 1,
-      name: 1,
-      recordedAt: -1
-    }),
-    database.collection('metrics').createIndex({ sessionId: 1 }),
-
-    database.collection('feedbacks').createIndex({ feedback_id: 1 }, { unique: true }),
-    database.collection('feedbacks').createIndex({
-      project: 1,
-      status: 1,
-      type: 1,
-      severity: 1,
-      createdAt: -1
-    }),
-    database.collection('feedbacks').createIndex({ related_contexts: 1 }),
-    database.collection('feedbacks').createIndex({ related_tasks: 1 }),
-    database.collection('feedbacks').createIndex({ voters: 1 }),
-    database.collection('feedbacks').createIndex({ sessionId: 1 }),
-
-    database.collection('chat_rooms').createIndex({ room_id: 1 }, { unique: true }),
-    database.collection('chat_rooms').createIndex({ project: 1, scope: 1 }),
-    database.collection('chat_rooms').createIndex({ participants: 1 }),
-    database.collection('chat_rooms').createIndex({ sessionId: 1 }),
-
-    database.collection('chat_messages').createIndex({ message_id: 1 }, { unique: true }),
-    database.collection('chat_messages').createIndex({ room_id: 1, createdAt: -1 }),
-    database.collection('chat_messages').createIndex({ from_agent: 1, createdAt: -1 }),
-    database.collection('chat_messages').createIndex({ sessionId: 1 }),
-
-    database.collection('connections').createIndex({ connectionId: 1 }, { unique: true }),
-    database.collection('connections').createIndex({ sessionId: 1 }),
-    database.collection('connections').createIndex({ clientId: 1 }, { unique: true }),
-    database.collection('connections').createIndex({ state: 1, lastActivityAt: -1 })
-  ]);
+/**
+ * ensureIndexes - No-op for SQLite.
+ * Indexes are created in the schema module (src/core/database/sqlite/schema.js)
+ * during database initialization.
+ */
+export async function ensureIndexes(_database) {
+  // SQLite indexes are created in schema.js during initialization.
+  // This function is kept for backward compatibility.
 }
 
 export function parsePositiveInt(value, fallback) {

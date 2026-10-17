@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRI/LFI Flow Viewer — local-mcp-memory</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: #1a1a2e;
+            padding: 20px 30px;
+            border-bottom: 2px solid #333366;
+        }
+
+        .header h1 {
+            font-size: 1.5em;
+            color: #00cc88;
+            margin-bottom: 4px;
+        }
+
+        .header .version {
+            font-size: 0.9em;
+            color: #888;
+        }
+
+        .header .version span {
+            color: #00cc88;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            padding: 20px 30px;
+            background: #111122;
+            border-bottom: 1px solid #222;
+        }
+
+        .stat-card {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 14px 16px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+
+        .stat-card:hover {
+            border-color: #00cc88;
+        }
+
+        .stat-card .value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #00cc88;
+        }
+
+        .stat-card .label {
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        /* Layout */
+        .layout {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            min-height: calc(100vh - 160px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: #111122;
+            border-right: 1px solid #222;
+            padding: 16px;
+        }
+
+        .sidebar h3 {
+            font-size: 0.8em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #222;
+        }
+
+        .flow-list {
+            list-style: none;
+        }
+
+        .flow-list li {
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-bottom: 4px;
+            transition: background 0.15s, color 0.15s;
+            color: #aaa;
+            border: 1px solid transparent;
+        }
+
+        .flow-list li:hover {
+            background: #1a1a2e;
+            color: #ddd;
+            border-color: #333;
+        }
+
+        .flow-list li.active {
+            background: #00cc88;
+            color: #000;
+            font-weight: 600;
+            border-color: #00cc88;
+        }
+
+        .flow-list li .flow-id {
+            font-size: 0.75em;
+            opacity: 0.6;
+            display: block;
+            margin-top: 1px;
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 20px 30px;
+            overflow-y: auto;
+        }
+
+        .flow-info {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .flow-info .badge {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            color: #ccc;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .flow-info .badge.source {
+            border-color: #00cc88;
+            color: #00cc88;
+        }
+
+        /* Diagram Container */
+        .diagram-container {
+            background: #fafafa;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 30px;
+            min-height: 500px;
+            overflow: auto;
+        }
+
+        .diagram-container .mermaid {
+            text-align: center;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            color: #ccc;
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.15s;
+        }
+
+        .controls button:hover {
+            background: #252540;
+            border-color: #00cc88;
+            color: #fff;
+        }
+
+        /* Node Reference */
+        .node-ref {
+            margin-top: 16px;
+            padding: 16px;
+            background: #111122;
+            border: 1px solid #222;
+            border-radius: 8px;
+        }
+
+        .node-ref h4 {
+            font-size: 0.85em;
+            color: #00cc88;
+            margin-bottom: 10px;
+        }
+
+        .node-ref table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8em;
+        }
+
+        .node-ref th,
+        .node-ref td {
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid #222;
+        }
+
+        .node-ref th {
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.85em;
+        }
+
+        .node-ref td {
+            color: #ccc;
+        }
+
+        .node-ref td code {
+            background: #1a1a2e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.95em;
+            color: #00cc88;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid #222;
+            }
+
+            .flow-list {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+
+            .flow-list li .flow-id {
+                display: none;
+            }
+        }
+
+        /* mermaid overrides */
+        .diagram-container .mermaid svg {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .diagram-container .mermaid .errorIcon {
+            fill: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>PRI/LFI Flow Visualizer</h1>
+        <div class="version">local-mcp-memory <span>v2.6.0</span> | 8 logic flows | 4 system flows | 12 total diagrams</div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card"><div class="value">12</div><div class="label">Total Flows</div></div>
+        <div class="stat-card"><div class="value">56</div><div class="label">Nodes Mapped</div></div>
+        <div class="stat-card"><div class="value">24</div><div class="label">Endpoints</div></div>
+        <div class="stat-card"><div class="value">76</div><div class="label">Source Refs</div></div>
+        <div class="stat-card"><div class="value">10</div><div class="label">Error Paths</div></div>
+        <div class="stat-card"><div class="value">7</div><div class="label">Domain Services</div></div>
+    </div>
+
+    <div class="layout">
+        <div class="sidebar">
+            <h3>Logic Flows</h3>
+            <ul class="flow-list" id="flowList">
+                <li class="active" data-flow="overview">System Overview<span class="flow-id">overview</span></li>
+                <li data-flow="startup-mcp">MCP Server Startup<span class="flow-id">startup-mcp</span></li>
+                <li data-flow="startup-http">HTTP API Server Startup<span class="flow-id">startup-http</span></li>
+                <li data-flow="tool-execution">Tool Execution<span class="flow-id">tool-execution</span></li>
+                <li data-flow="memory">Memory Flow<span class="flow-id">memory</span></li>
+                <li data-flow="task">Task Flow<span class="flow-id">task</span></li>
+                <li data-flow="lock">Lock Flow<span class="flow-id">lock</span></li>
+                <li data-flow="plugin">Plugin Flow<span class="flow-id">plugin</span></li>
+                <li data-flow="browser">Browser Automation<span class="flow-id">browser</span></li>
+                <li data-flow="agent-workflow">Agent Decision Workflow<span class="flow-id">agent-workflow</span></li>
+                <li data-flow="pri-lifecycle">PRI/LFI Lifecycle<span class="flow-id">pri-lifecycle</span></li>
+                <li data-flow="task-execution">Task Execution Flow<span class="flow-id">task-execution</span></li>
+            </ul>
+        </div>
+
+        <div class="main-content">
+            <div class="flow-info" id="flowInfo"></div>
+            <div class="controls">
+                <button onclick="zoomDiagram(1.2)">Zoom In</button>
+                <button onclick="zoomDiagram(0.8)">Zoom Out</button>
+                <button onclick="zoomDiagram(0)">Reset</button>
+                <button onclick="downloadSVG()">Download SVG</button>
+                <button onclick="copyMermaid()">Copy Mermaid</button>
+            </div>
+            <div class="diagram-container" id="diagramContainer">
+                <div class="mermaid" id="mermaidDiagram"></div>
+            </div>
+            <div class="node-ref" id="nodeRef"></div>
+        </div>
+    </div>
+
+    <script>
+    // All flow definitions — Mermaid source + metadata
+    const flows = {
+        overview: {
+            name: "System Overview",
+            category: "System Architecture",
+            description: "High-level architecture showing MCP clients, servers, agents, and database interaction.",
+            mermaid: `flowchart TD
+    subgraph MCP_Clients ["MCP Clients"]
+        A1[OpenCode CLI]
+        A2[Other AI Tools]
+    end
+
+    subgraph MCP_Server ["MCP Server (local-mcp-memory)"]
+        B1[stdio Transport]
+        B2[Connection Resolver]
+        B3[Tool Registry]
+        B4[Plugin Manager]
+    end
+
+    subgraph API_Server ["HTTP API Server"]
+        C1[Express Server]
+        C2[REST Routes]
+        C3[Auth Middleware]
+        C4[Dashboard Routes]
+    end
+
+    subgraph Domain_Services ["Domain Services"]
+        D1[Memory Service]
+        D2[Task Service]
+        D3[Issue Service]
+        D4[Lock Service]
+        D5[Agent Service]
+        D6[Activity Service]
+        D7[Context Service]
+    end
+
+    subgraph Database ["SQLite Database"]
+        E1[(memory.db)]
+    end
+
+    A1 -->|"MCP protocol"| B1
+    A2 -->|"MCP protocol"| B1
+    B1 --> B2
+    B2 --> B3
+    B3 -->|"HTTP POST"| C1
+    B3 --> B4
+    B4 -->|"plugin hooks"| D1
+    C1 --> C2
+    C1 --> C3
+    C1 --> C4
+    C2 --> D1
+    C2 --> D2
+    C2 --> D3
+    C2 --> D4
+    C2 --> D5
+    C2 --> D6
+    C2 --> D7
+    D1 --> E1
+    D2 --> E1
+    D3 --> E1
+    D4 --> E1
+    D5 --> E1
+    D6 --> E1
+    D7 --> E1
+
+    style A1 fill:#2196F3,color:#fff
+    style A2 fill:#2196F3,color:#fff
+    style B1 fill:#4CAF50,color:#fff
+    style B3 fill:#4CAF50,color:#fff
+    style C1 fill:#FF9800,color:#fff
+    style C3 fill:#9C27B0,color:#fff
+    style E1 fill:#00BCD4,color:#fff`,
+            nodes: [
+                { id: "MCP_Clients", name: "MCP Clients", source: "External consumers" },
+                { id: "MCP_Server", name: "MCP Server", source: "mcp-server.js" },
+                { id: "API_Server", name: "HTTP API Server", source: "server.js" },
+                { id: "Domain_Services", name: "Domain Services", source: "src/domains/" },
+                { id: "Database", name: "SQLite Database", source: "src/core/database/" }
+            ]
+        },
+        "startup-mcp": {
+            name: "MCP Server Startup",
+            category: "Startup",
+            description: "MCP server initialization: load environment, resolve identity, start internal HTTP server, set up stdio.",
+            mermaid: `flowchart TD
+    START1:Entry[mcp-server.js] --> START2:Process[Load Environment]
+    START2:Process --> START3:Process[Resolve Project Identity]
+    START3:Process --> START4:Process[Start Internal HTTP Server]
+    START4:Process --> START5:Decision{Server Ready?}
+    START5:Decision -->|YES| START6:Process[Initialize Connection Resolver]
+    START5:Decision -->|NO| START5a:Error[Startup Failed]
+    START6:Process --> START7:Process[Set Up stdio readline]
+    START7:Process --> START8:Output[Ready for MCP Requests]
+
+    style START1:Entry fill:#4CAF50,color:#fff
+    style START8:Output fill:#2196F3,color:#fff
+    style START5a:Error fill:#f44336,color:#fff`,
+            nodes: [
+                { id: "START1:Entry", name: "mcp-server.js", source: "mcp-server.js:1" },
+                { id: "START2:Process", name: "Load Environment", source: "mcp-server.js:23-26" },
+                { id: "START3:Process", name: "Resolve Project Identity", source: "mcp-server.js:38-41" },
+                { id: "START4:Process", name: "Start Internal HTTP Server", source: "mcp-server.js:58" },
+                { id: "START5:Decision", name: "Server Ready?", source: "startMemoryServer.js:6-23" },
+                { id: "START6:Process", name: "Initialize Connection Resolver", source: "mcp-server.js:59-64" },
+                { id: "START7:Process", name: "Set Up stdio readline", source: "mcp-server.js:32-36" },
+                { id: "START8:Output", name: "Ready for MCP Requests", source: "mcp-server.js:ready state" }
+            ]
+        },
+        "startup-http": {
+            name: "HTTP API Server Startup",
+            category: "Startup",
+            description: "Express HTTP server: initialize SQLite, plugin manager, register routes, start listening.",
+            mermaid: `flowchart TD
+    START1:Entry[server.js] --> START2:Process[Load Environment]
+    START2:Process --> START3:Process[Initialize SQLite Database]
+    START3:Process --> START4:Decision{DB Ready?}
+    START4:Decision -->|YES| START5:Process[Initialize Plugin Manager]
+    START4:Decision -->|NO| START4a:Error[DB Init Failed]
+    START5:Process --> START6:Process[Register Express Middleware]
+    START6:Process --> START7:Process[Register API Routes]
+    START7:Process --> START8:Process[Start Listening]
+    START8:Process --> START9:Output[Server Healthy]
+
+    style START1:Entry fill:#4CAF50,color:#fff
+    style START9:Output fill:#2196F3,color:#fff
+    style START4a:Error fill:#f44336,color:#fff`,
+            nodes: [
+                { id: "START1:Entry", name: "server.js", source: "server.js:1" },
+                { id: "START3:Process", name: "Initialize SQLite Database", source: "server.js:5" },
+                { id: "START4:Decision", name: "DB Ready?", source: "server.js (DB init)" },
+                { id: "START5:Process", name: "Initialize Plugin Manager", source: "core/plugin/plugin-manager.js:17" },
+                { id: "START6:Process", name: "Register Express Middleware", source: "server.js (middleware)" },
+                { id: "START7:Process", name: "Register API Routes", source: "server.js (routes)" },
+                { id: "START8:Process", name: "Start Listening", source: "server.js (listen)" }
+            ]
+        },
+        "tool-execution": {
+            name: "Tool Execution",
+            category: "Request Lifecycle",
+            description: "Full MCP tool call: parse JSON-RPC, check circuit breaker, validate args, route to domain service, query SQLite, return response.",
+            mermaid: `flowchart TD
+    TOOL1:Entry[MCP Request on stdin] --> TOOL2:Process[Parse JSON-RPC]
+    TOOL2:Process --> TOOL3:Decision{Tool Exists?}
+    TOOL3:Decision -->|NO| TOOL3a:Error[Tool Not Found]
+    TOOL3:Decision -->|YES| TOOL4:Decision{Circuit Breaker Open?}
+    TOOL4:Decision -->|YES| TOOL4a:Error[Circuit Open]
+    TOOL4:Decision -->|NO| TOOL5:Process[Validate Argument Size]
+    TOOL5:Process --> TOOL6:Decision{Size OK?}
+    TOOL6:Decision -->|NO| TOOL6a:Error[Payload Too Large]
+    TOOL6:Decision -->|YES| TOOL7:Process[Sanitize Agent IDs]
+    TOOL7:Process --> TOOL8:External[HTTP to Internal Server]
+    TOOL8:External --> TOOL9:Process[Route to Domain Service]
+    TOOL9:Process --> TOOL10:Process[Execute Business Logic]
+    TOOL10:Process --> TOOL11:External[SQLite Query]
+    TOOL11:External --> TOOL12:Process[Format Response]
+    TOOL12:Process --> TOOL13:Output[MCP Response on stdout]
+
+    style TOOL1:Entry fill:#4CAF50,color:#fff
+    style TOOL13:Output fill:#2196F3,color:#fff
+    style TOOL3a:Error fill:#f44336,color:#fff
+    style TOOL4a:Error fill:#f44336,color:#fff
+    style TOOL6a:Error fill:#f44336,color:#fff`,
+            nodes: [
+                { id: "TOOL1:Entry", name: "MCP Request on stdin", source: "mcp-server.js (readline)" },
+                { id: "TOOL3:Decision", name: "Tool Exists?", source: "src/core/mcp/tool-registry.js:27" },
+                { id: "TOOL4:Decision", name: "Circuit Breaker Open?", source: "mcp-server.js:99-108" },
+                { id: "TOOL7:Process", name: "Sanitize Agent IDs", source: "mcp-server.js:96-97" },
+                { id: "TOOL8:External", name: "HTTP to Internal Server", source: "mcp-server.js (fetch)" },
+                { id: "TOOL9:Process", name: "Route to Domain Service", source: "src/core/mcp/tool-executor.js:14" },
+                { id: "TOOL11:External", name: "SQLite Query", source: "src/core/database/sqlite/index.js" }
+            ]
+        },
+        memory: {
+            name: "Memory Flow",
+            category: "Domain Service",
+            description: "Memory CRUD: create with UUID, search with FTS5, update with version conflict detection, soft delete.",
+            mermaid: `flowchart TD
+    MEM1:Entry[Memory Request] --> MEM2:Process[Validate Input]
+    MEM2:Process --> MEM3:Decision{Operation Type?}
+    MEM3:Decision -->|CREATE| MEM4:Process[Generate UUID]
+    MEM3:Decision -->|SEARCH| MEM5:Process[Build Query Filters]
+    MEM3:Decision -->|UPDATE| MEM6:Process[Check Version Conflict]
+    MEM3:Decision -->|DELETE| MEM7:Process[Soft Delete]
+
+    MEM4:Process --> MEM8:External[Insert into contexts]
+    MEM5:Process --> MEM9:Process[Apply Scope Filter]
+    MEM9:Process --> MEM10:Process[Apply Text Search FTS5]
+    MEM10:Process --> MEM11:External[Query contexts]
+
+    MEM6:Decision -->|CONFLICT| MEM6a:Error[Version Conflict]
+    MEM6:Decision -->|OK| MEM12:Process[Increment Version]
+    MEM12:Process --> MEM13:External[Update contexts]
+    MEM13:External --> MEM14:External[Insert context_versions]
+
+    MEM7:Process --> MEM15:External[Set lifecycle=archived]
+
+    MEM8:External --> MEM16:Process[Record Activity]
+    MEM11:External --> MEM16:Process
+    MEM14:External --> MEM16:Process
+    MEM15:External --> MEM16:Process
+
+    MEM16:Process --> MEM17:Output[Return Result]
+
+    style MEM1:Entry fill:#4CAF50,color:#fff
+    style MEM17:Output fill:#2196F3,color:#fff
+    style MEM6a:Error fill:#f44336,color:#fff`,
+            nodes: [
+                { id: "MEM1:Entry", name: "Memory Request", source: "utils/memoryEngine.js" },
+                { id: "MEM2:Process", name: "Validate Input", source: "utils/security-validators.js" },
+                { id: "MEM5:Process", name: "Build Query Filters", source: "src/domains/memory/memory.service.js:31" },
+                { id: "MEM6:Decision", name: "Check Version Conflict", source: "utils/memoryEngine.js" },
+                { id: "MEM8:External", name: "Insert into contexts", source: "src/core/database/sqlite/collection.js" },
+                { id: "MEM10:Process", name: "Apply Text Search FTS5", source: "src/core/database/sqlite/query-builder.js" },
+                { id: "MEM12:Process", name: "Increment Version", source: "utils/memoryEngine.js" },
+                { id: "MEM16:Process", name: "Record Activity", source: "utils/activityTracker.js" }
+            ]
+        },
+        task: {
+            name: "Task Flow",
+            category: "Domain Service",
+            description: "Task lifecycle: create with dependency check, assign with conflict detection, update status with dependent task resolution.",
+            mermaid: `flowchart TD
+    TASK1:Entry[Task Request] --> TASK2:Process[Validate Input]
+    TASK2:Process --> TASK3:Decision{Operation?}
+    TASK3:Decision -->|CREATE| TASK4:Process[Create Task PENDING]
+    TASK3:Decision -->|FETCH| TASK5:Process[Apply Filters]
+    TASK3:Decision -->|ASSIGN| TASK6:Process[Claim/Assign Agent]
+    TASK3:Decision -->|UPDATE| TASK7:Process[Update Status]
+
+    TASK4:Process --> TASK8:Process[Check Dependencies]
+    TASK8:Decision -->|DEPS MET| TASK9:Process[Auto-Assign]
+    TASK8:Decision -->|DEPS UNMET| TASK10:Process[Keep PENDING]
+    TASK9:Process --> TASK11:External[Insert into tasks]
+
+    TASK6:Process --> TASK12:Decision{Already Assigned?}
+    TASK12:Decision -->|YES| TASK12a:Error[Conflict]
+    TASK12:Decision -->|NO| TASK13:External[Update tasks]
+
+    TASK7:Process --> TASK14:Decision{New Status?}
+    TASK14:Decision -->|COMPLETED| TASK15:Process[Check Dependent Tasks]
+    TASK14:Decision -->|BLOCKED| TASK16:Process[Record Blocker]
+    TASK14:Decision -->|IN_PROGRESS| TASK17:External[Update tasks]
+
+    TASK15:Process --> TASK18:Process[Unlock Dependent Tasks]
+
+    TASK11:External --> TASK19:Process[Record Activity]
+    TASK13:External --> TASK19:Process
+    TASK17:External --> TASK19:Process
+
+    TASK19:Process --> TASK20:Output[Return Result]
+
+    style TASK1:Entry fill:#4CAF50,color:#fff
+    style TASK20:Output fill:#2196F3,color:#fff
+    style TASK12a:Error fill:#f44336,color:#fff`,
+            nodes: [
+                { id: "TASK1:Entry", name: "Task Request", source: "utils/coordinationEngine.js" },
+                { id: "TASK4:Process", name: "Create Task PENDING", source: "src/domains/task/task.service.js" },
+                { id: "TASK8:Process", name: "Check Dependencies", source: "utils/coordinationEngine.js" },
+                { id: "TASK9:Process", name: "Auto-Assign", source: "utils/coordinationEngine.js" },
+                { id: "TASK12:Decision", name: "Already Assigned?", source: "utils/coordinationEngine.js" },
+                { id: "TASK14:Decision", name: "New Status?", source: "src/domains/task/task.service.js" },
+                { id: "TASK15:Process", name: "Check Dependent Tasks", source: "utils/coordinationEngine.js" }
+            ]
+        },
+        lock: {
+            name: "Lock Flow",
+            category: "Domain Service",
+            description: "Soft lock acquisition: validate resource, check existing lock, TTL expiry, refresh or force acquire.",
+            mermaid: `flowchart TD
+    LOCK1:Entry[Lock Request] --> LOCK2:Process[Validate Resource]
+    LOCK2:Process --> LOCK3:Decision{Lock Exists?}
+    LOCK3:Decision -->|NO| LOCK4:Process[Acquire Lock with TTL]
+    LOCK3:Decision -->|YES| LOCK5:Decision{Same Agent?}
+    LOCK5:Decision -->|YES| LOCK6:Process[Refresh TTL]
+    LOCK5:Decision -->|NO| LOCK7:Decision{TTL Expired?}
+    LOCK7:Decision -->|YES| LOCK8:Process[Force Acquire]
+    LOCK7:Decision -->|NO| LOCK9:Output[Warn: Locked by Other]
+
+    LOCK4:Process --> LOCK10:External[Insert resource_locks]
+    LOCK6:Process --> LOCK11:External[Update resource_locks]
+    LOCK8:Process --> LOCK12:External[Replace resource_locks]
+
+    LOCK10:External --> LOCK13:Process[Start Expiry Timer]
+    LOCK11:External --> LOCK13:Process
+    LOCK12:External --> LOCK13:Process
+
+    LOCK13:Process --> LOCK14:Output[Lock Acquired]
+
+    style LOCK1:Entry fill:#4CAF50,color:#fff
+    style LOCK14:Output fill:#2196F3,color:#fff
+    style LOCK9:Output fill:#FF9800,color:#fff`,
+            nodes: [
+                { id: "LOCK1:Entry", name: "Lock Request", source: "utils/collaborationEngine.js" },
+                { id: "LOCK3:Decision", name: "Lock Exists?", source: "utils/collaborationEngine.js" },
+                { id: "LOCK4:Process", name: "Acquire Lock with TTL", source: "utils/collaborationEngine.js" },
+                { id: "LOCK5:Decision", name: "Same Agent?", source: "utils/collaborationEngine.js" },
+                { id: "LOCK7:Decision", name: "TTL Expired?", source: "utils/collaborationEngine.js" },
+                { id: "LOCK13:Process", name: "Start Expiry Timer", source: "utils/collaborationEngine.js" }
+            ]
+        },
+        plugin: {
+            name: "Plugin Flow",
+            category: "Plugin System",
+            description: "Plugin initialization: read plugin list, dynamic import per plugin name, call initialize(), run INIT hooks.",
+            mermaid: `flowchart TD
+    PLUGIN1:Entry[PluginManager.initialize] --> PLUGIN2:Process[Read Plugin List]
+    PLUGIN2:Process --> PLUGIN3:Process[For Each Plugin]
+    PLUGIN3:Process --> PLUGIN4:Decision{Plugin Name?}
+    PLUGIN4:Decision -->|redis| PLUGIN5:External[Import redis-adapter]
+    PLUGIN4:Decision -->|browser| PLUGIN6:External[Import browser-controller]
+    PLUGIN4:Decision -->|knowledgeBase| PLUGIN7:External[Import knowledge-store]
+    PLUGIN4:Decision -->|emulator| PLUGIN8:External[Import emulator-plugin]
+    PLUGIN4:Decision -->|unknown| PLUGIN9:Error[Unknown Plugin]
+
+    PLUGIN5:External --> PLUGIN10:Decision{"initialize() success?"}
+    PLUGIN6:External --> PLUGIN10:Decision
+    PLUGIN7:External --> PLUGIN10:Decision
+    PLUGIN8:External --> PLUGIN10:Decision
+
+    PLUGIN10:Decision -->|SUCCESS| PLUGIN11:Process[Register Plugin]
+    PLUGIN10:Decision -->|FAIL| PLUGIN12:Error[Log Error, Continue]
+
+    PLUGIN11:Process --> PLUGIN13:Process[Run INIT Hooks]
+    PLUGIN13:Process --> PLUGIN14:Output[Plugins Ready]
+
+    style PLUGIN1:Entry fill:#4CAF50,color:#fff
+    style PLUGIN14:Output fill:#2196F3,color:#fff
+    style PLUGIN9:Error fill:#f44336,color:#fff
+    style PLUGIN12:Error fill:#FF9800,color:#fff`,
+            nodes: [
+                { id: "PLUGIN1:Entry", name: "PluginManager.initialize", source: "core/plugin/plugin-manager.js:17" },
+                { id: "PLUGIN2:Process", name: "Read Plugin List", source: "core/plugin/plugin-manager.js:22" },
+                { id: "PLUGIN4:Decision", name: "Plugin Name?", source: "core/plugin/plugin-manager.js:42-57" },
+                { id: "PLUGIN5:External", name: "Import redis-adapter", source: "core/plugin/plugin-manager.js:44" },
+                { id: "PLUGIN10:Decision", name: "initialize() success?", source: "core/plugin/plugin-manager.js:62-63" },
+                { id: "PLUGIN11:Process", name: "Register Plugin", source: "core/plugin/plugin-manager.js:66-68" },
+                { id: "PLUGIN13:Process", name: "Run INIT Hooks", source: "core/plugin/plugin-manager.js:28" }
+            ]
+        },
+        browser: {
+            name: "Browser Automation",
+            category: "Domain Service",
+            description: "Browser tool dispatch: route by action (open, navigate, click, fill, screenshot, evaluate, close).",
+            mermaid: `flowchart TD
+    BROWSER1:Entry[Browser Tool Request] --> BROWSER2:Decision{Action?}
+    BROWSER2:Decision -->|open_browser| BROWSER3:Process[Launch Playwright]
+    BROWSER2:Decision -->|navigate| BROWSER4:Process[Goto URL]
+    BROWSER2:Decision -->|click| BROWSER5:Process[Click Element]
+    BROWSER2:Decision -->|fill| BROWSER6:Process[Fill Input]
+    BROWSER2:Decision -->|screenshot| BROWSER7:Process[Capture Screenshot]
+    BROWSER2:Decision -->|evaluate| BROWSER8:Process[Execute JavaScript]
+    BROWSER2:Decision -->|close| BROWSER9:Process[Close Browser]
+
+    BROWSER3:Process --> BROWSER10:Output[Session ID]
+    BROWSER4:Process --> BROWSER11:Process[Wait for Load]
+    BROWSER5:Process --> BROWSER12:Process[Find Selector]
+    BROWSER6:Process --> BROWSER13:Process[Type Text]
+    BROWSER7:Process --> BROWSER14:Output[Image Data]
+    BROWSER8:Process --> BROWSER15:Output[JS Result]
+    BROWSER9:Process --> BROWSER16:Output[Closed]
+
+    BROWSER11:Process --> BROWSER17:Output[Page Loaded]
+    BROWSER12:Process --> BROWSER18:Output[Element Clicked]
+    BROWSER13:Process --> BROWSER19:Output[Input Filled]
+
+    style BROWSER1:Entry fill:#4CAF50,color:#fff
+    style BROWSER10:Output fill:#2196F3,color:#fff
+    style BROWSER14:Output fill:#2196F3,color:#fff
+    style BROWSER15:Output fill:#2196F3,color:#fff
+    style BROWSER16:Output fill:#2196F3,color:#fff`,
+            nodes: [
+                { id: "BROWSER1:Entry", name: "Browser Tool Request", source: "tools/browserTools.js" },
+                { id: "BROWSER3:Process", name: "Launch Playwright", source: "tools/browserTools.js" },
+                { id: "BROWSER4:Process", name: "Goto URL", source: "tools/browserTools.js" },
+                { id: "BROWSER5:Process", name: "Click Element", source: "tools/browserTools.js" },
+                { id: "BROWSER7:Process", name: "Capture Screenshot", source: "tools/browserTools.js" },
+                { id: "BROWSER8:Process", name: "Execute JavaScript", source: "tools/browserTools.js" }
+            ]
+        },
+        "agent-workflow": {
+            name: "Agent Decision Workflow",
+            category: "Governance",
+            description: "Agent session lifecycle: read governance, load PRI/LFI, execute task, persist context.",
+            mermaid: `flowchart TD
+    A[Agent Session Start] --> B[Read AGENTS.md]
+    B --> C{Governance Files Exist?}
+    C -->|Yes| D[Load GOVERNANCE.md]
+    C -->|No| E[Log Warning]
+    D --> F[Load AGENT_RULES.md]
+    F --> G[Load PROJECT_WORKFLOW.md]
+    G --> H[Load WORKFLOW_STANDARDS.md]
+    H --> I[Load ENFORCEMENT.md]
+    I --> J{PRI/LFI Exist?}
+    J -->|Yes| K[Read PRI]
+    J -->|No| L[Create PRI]
+    K --> M[Read LFI]
+    M --> N[Task Understanding]
+    N --> O[Execute Task]
+    O --> P[Update PRI/LFI]
+    P --> Q[Store Context]
+    Q --> R[Record Activity]
+    R --> S[Session End]
+    L --> T[Inspect Project]
+    T --> U[Create PRI]
+    U --> V[Create LFI]
+    V --> N`,
+            nodes: [
+                { id: "A", name: "Agent Session Start", source: "Agent entry" },
+                { id: "B", name: "Read AGENTS.md", source: "AGENTS.md" },
+                { id: "K", name: "Read PRI", source: ".workspace/PRI/" },
+                { id: "M", name: "Read LFI", source: ".workspace/LFI/" },
+                { id: "O", name: "Execute Task", source: "Current task" },
+                { id: "P", name: "Update PRI/LFI", source: "On structural change" }
+            ]
+        },
+        "pri-lifecycle": {
+            name: "PRI/LFI Lifecycle",
+            category: "Governance",
+            description: "PRI creation: project discovery, capture tech stack, directory structure, config, dependencies.",
+            mermaid: `flowchart TD
+    A[Stage 0: Determine Scope] --> B[Stage 1: Project Discovery]
+    B --> C[Inspect Git State]
+    C --> D[Inspect Project Structure]
+    D --> E[Read Existing Documentation]
+    E --> F{PRI Exists?}
+    F -->|Yes| G[Read Existing PRI]
+    F -->|No| H[Create New PRI]
+    G --> I[Validate PRI Against Project]
+    I --> J{Changes Needed?}
+    J -->|Yes| K[Update PRI]
+    J -->|No| L[Use Existing PRI]
+    H --> M[Capture Tech Stack]
+    M --> N[Capture Directory Structure]
+    N --> O[Capture Configuration]
+    O --> P[Capture Dependencies]
+    P --> Q[Capture Build System]
+    Q --> R[Capture Testing Framework]
+    R --> S[Capture Documentation System]
+    S --> T[Generate PRI]
+    T --> U[Save to .workspace/PRI/]
+    K --> U
+    U --> V[Cross-Reference LFI]
+    V --> W[Stage 2: Baseline]`,
+            nodes: [
+                { id: "A", name: "Stage 0: Determine Scope", source: "PROJECT_WORKFLOW.md" },
+                { id: "B", name: "Stage 1: Project Discovery", source: "PROJECT_WORKFLOW.md" },
+                { id: "F", name: "PRI Exists?", source: ".workspace/PRI/" },
+                { id: "H", name: "Create New PRI", source: "PR creation" },
+                { id: "T", name: "Generate PRI", source: "PRI assembly" },
+                { id: "U", name: "Save to .workspace/PRI/", source: "File write" }
+            ]
+        },
+        "task-execution": {
+            name: "Task Execution Flow",
+            category: "Governance",
+            description: "Task lifecycle: read PRI/LFI, plan compliance, execute, validate, update references, persist.",
+            mermaid: `flowchart TD
+    A[New Task] --> B[Read PRI/LFI]
+    B --> C[Understand Project Context]
+    C --> D[Plan Compliance]
+    D --> E[Execute Task]
+    E --> F[Validate Changes]
+    F --> G{Changes Affect Behavior?}
+    G -->|Yes| H[Update LFI]
+    G -->|No| I{Changes Affect Structure?}
+    H --> J[Update PRI]
+    I -->|Yes| J
+    I -->|No| K[Store Context]
+    J --> K
+    K --> L[Record Activity]
+    L --> M[Task Complete]`,
+            nodes: [
+                { id: "A", name: "New Task", source: "Task creation" },
+                { id: "B", name: "Read PRI/LFI", source: ".workspace/" },
+                { id: "E", name: "Execute Task", source: "Current work" },
+                { id: "G", name: "Changes Affect Behavior?", source: "Validation gate" },
+                { id: "H", name: "Update LFI", source: ".workspace/LFI/" },
+                { id: "J", name: "Update PRI", source: ".workspace/PRI/" }
+            ]
+        }
+    };
+
+    // State
+    let currentFlow = 'overview';
+    let currentZoom = 1;
+    let currentMermaidSource = '';
+
+    // Mermaid init
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+        securityLevel: 'loose'
+    });
+
+    // Render
+    async function renderFlow(flowId) {
+        const flow = flows[flowId];
+        if (!flow) return;
+        currentFlow = flowId;
+        currentMermaidSource = flow.mermaid;
+
+        // Update sidebar
+        document.querySelectorAll('.flow-list li').forEach(li => {
+            li.classList.toggle('active', li.dataset.flow === flowId);
+        });
+
+        // Info badges
+        const info = document.getElementById('flowInfo');
+        info.innerHTML = `
+            <span class="badge source">${flow.category}</span>
+            <span class="badge">${flow.nodes.length} nodes</span>
+            <span style="color:#999;font-size:0.9em">${flow.description}</span>
+        `;
+
+        // Render mermaid
+        const container = document.getElementById('mermaidDiagram');
+        container.innerHTML = '';
+        const id = 'mermaid-' + flowId + '-' + Date.now();
+        try {
+            const { svg } = await mermaid.render(id, flow.mermaid);
+            container.innerHTML = svg;
+            // Apply zoom
+            const svgEl = container.querySelector('svg');
+            if (svgEl) {
+                svgEl.style.transform = `scale(${currentZoom})`;
+                svgEl.style.transformOrigin = 'top left';
+                svgEl.style.transition = 'transform 0.2s';
+            }
+        } catch (e) {
+            container.innerHTML = `<pre style="color:#f44336">Mermaid render error:\n${e.message}</pre>`;
+        }
+
+        // Node reference table
+        const ref = document.getElementById('nodeRef');
+        ref.innerHTML = `
+            <h4>Node ID &rarr; Source Code Reference</h4>
+            <table>
+                <thead><tr><th>Node ID</th><th>Component</th><th>Source</th></tr></thead>
+                <tbody>
+                    ${flow.nodes.map(n => `<tr><td><code>${n.id}</code></td><td>${n.name}</td><td><code>${n.source}</code></td></tr>`).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    // Zoom
+    function zoomDiagram(factor) {
+        if (factor === 0) currentZoom = 1;
+        else currentZoom *= factor;
+        const svg = document.querySelector('#mermaidDiagram svg');
+        if (svg) {
+            svg.style.transform = `scale(${currentZoom})`;
+            svg.style.transformOrigin = 'top left';
+            svg.style.transition = 'transform 0.2s';
+        }
+    }
+
+    // Download SVG
+    function downloadSVG() {
+        const svg = document.querySelector('#mermaidDiagram svg');
+        if (!svg) return;
+        const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `flow-${currentFlow}.svg`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // Copy mermaid source
+    function copyMermaid() {
+        navigator.clipboard.writeText(currentMermaidSource).then(() => {
+            const btn = document.querySelector('.controls button:last-child');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy Mermaid', 1500);
+        });
+    }
+
+    // Sidebar click
+    document.getElementById('flowList').addEventListener('click', (e) => {
+        const li = e.target.closest('li');
+        if (li && li.dataset.flow) renderFlow(li.dataset.flow);
+    });
+
+    // Init
+    renderFlow('overview');
+    </script>
+</body>
+</html>

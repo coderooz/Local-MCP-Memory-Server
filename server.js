@@ -16,7 +16,6 @@ import {
   MemoryQueryBuilder,
   MessageModel,
   ProjectMapModel,
-  SessionModel,
   TaskModel,
   normalizeMemory,
 } from './core/mcp/models.js';
@@ -135,7 +134,10 @@ const DB_NAME = process.env.MCP_DB_NAME || 'mcp-memory';
 const DEFAULT_PORT = Number(process.env.PORT || 0);
 const eventBus = createEventBus();
 
-const app = express();
+// Exported so isolated test harnesses can mount the real app on a
+// loopback-only ephemeral port. Production startup still goes through
+// startServer(); this export does not change runtime behaviour.
+export const app = express();
 app.use(express.json());
 
 import { rateLimiter, agentRateLimiter } from './utils/rate-limiter.js';
@@ -214,6 +216,17 @@ function getDb() {
 
 export function getDbInstance() {
   return getDb();
+}
+
+/**
+ * Returns the database handle bound to the mounted app.
+ *
+ * `startServer()` assigns both the module-level reference and `app.locals.db`.
+ * Isolated harnesses inject `app.locals.db` directly, so preferring the
+ * app-scoped handle lets the real routes run without the full startup path.
+ */
+function getActiveDb() {
+  return app.locals.db || getDb();
 }
 
 function parsePositiveInt(value, fallback) {
@@ -387,6 +400,47 @@ function buildContextUpdatePayload(updates = {}) {
 
 function firstNonEmptyString(...values) {
   return values.find((value) => hasText(value)) || null;
+}
+
+/**
+ * Resolves the project anchor a request is scoped to.
+ *
+ * Precedence: authenticated principal (API key / user) > session header >
+ * query > body. Returns null when the caller supplies no anchor; the
+ * documented "no anchor -> no project filter" behaviour is preserved for
+ * unanchored reads (resources/memory/context-retrieval.md).
+ */
+function resolveRequestProject(req) {
+  return firstNonEmptyString(
+    req.apiKey?.project,
+    req.user?.project,
+    req.headers?.['x-mcp-project'],
+    req.query?.project,
+    req.body?.project
+  );
+}
+
+function resolveRequestSessionId(req) {
+  return firstNonEmptyString(
+    req.headers?.['x-mcp-session-id'],
+    req.query?.sessionId,
+    req.body?.sessionId
+  );
+}
+
+function buildRequestScope(req) {
+  const project = resolveRequestProject(req);
+  const sessionId = resolveRequestSessionId(req);
+
+  return {
+    project,
+    sessionId,
+    filter: project ? { project } : {},
+  };
+}
+
+function isSessionScopeViolation(document, sessionId) {
+  return Boolean(sessionId && document?.sessionId && document.sessionId !== sessionId);
 }
 
 async function trackActivity(database, payload = {}) {
@@ -898,14 +952,17 @@ app.post(
   routeHandler('contexts', async ({ req, db: database }) => {
     const { context_id, updates = {}, reason } = req.body;
     const actor = req.body.agent || 'system';
+    const { filter: scopeFilter, sessionId } = buildRequestScope(req);
 
     if (!context_id) {
       return { error: 'Missing context_id' };
     }
 
-    const existing = await database.collection('contexts').findOne({ id: context_id });
+    const existing = await database
+      .collection('contexts')
+      .findOne({ id: context_id, ...scopeFilter });
 
-    if (!existing) {
+    if (!existing || isSessionScopeViolation(existing, sessionId)) {
       return { error: 'Context not found' };
     }
 
@@ -945,6 +1002,7 @@ app.post(
       : await updateContextWithVersioning(database, context_id, payload, {
           reason: reason || 'Context updated',
           changedBy: actor || existing.agent || 'system',
+          scopeFilter,
         });
 
     await recordMetric(database, {
@@ -990,9 +1048,10 @@ app.post(
 app.get(
   '/context/:id/full',
   routeHandler('contexts', async ({ req, db: database }) => {
-    const context = await database.collection('contexts').findOne({ id: req.params.id });
+    const { filter, sessionId } = buildRequestScope(req);
+    const context = await database.collection('contexts').findOne({ id: req.params.id, ...filter });
 
-    if (!context) {
+    if (!context || isSessionScopeViolation(context, sessionId)) {
       return { error: 'Context not found' };
     }
 
@@ -1013,7 +1072,14 @@ app.get(
 app.get(
   '/context/:id/connected',
   routeHandler('contexts', async ({ req, db: database }) => {
-    const connected = await getConnectedContextData(database, req.params.id);
+    const { filter, sessionId } = buildRequestScope(req);
+    const root = await database.collection('contexts').findOne({ id: req.params.id, ...filter });
+
+    if (!root || isSessionScopeViolation(root, sessionId)) {
+      return { error: 'Context not found' };
+    }
+
+    const connected = await getConnectedContextData(database, req.params.id, filter);
 
     if (!connected) {
       return { error: 'Context not found' };
@@ -1063,30 +1129,6 @@ app.post(
     });
 
     return { success: true, action };
-  })
-);
-
-app.post(
-  '/session',
-  routeHandler('sessions', async ({ req, collection, db: database }) => {
-    const existing = await database
-      .collection('sessions')
-      .findOne({ sessionId: req.body.sessionId });
-
-    if (existing) {
-      await database
-        .collection('sessions')
-        .updateOne(
-          { sessionId: req.body.sessionId },
-          { $set: { ...normalizeMemory(req.body), updatedAt: new Date() } }
-        );
-      return { success: true, session: { ...existing, ...req.body } };
-    }
-
-    const session = new SessionModel(req.body);
-    await collection.insertOne(normalizeMemory(session));
-
-    return { success: true, session };
   })
 );
 
@@ -1539,14 +1581,15 @@ app.post(
   routeHandler('tasks', async ({ req, collection, db: database }) => {
     const { task_id, updates = {} } = req.body;
     const actor = req.body.agent || 'system';
+    const { filter: scopeFilter, sessionId } = buildRequestScope(req);
 
     if (!task_id) {
       return { error: 'Missing task_id' };
     }
 
-    const existingTask = await collection.findOne({ task_id });
+    const existingTask = await collection.findOne({ task_id, ...scopeFilter });
 
-    if (!existingTask) {
+    if (!existingTask || isSessionScopeViolation(existingTask, sessionId)) {
       return { error: 'Task not found' };
     }
 
@@ -1602,7 +1645,7 @@ app.post(
     const { _id, ...existingTaskData } = existingTask;
 
     await collection.updateOne(
-      { task_id },
+      { task_id, ...scopeFilter },
       {
         $set: normalizeMemory({
           ...existingTaskData,
@@ -1614,7 +1657,7 @@ app.post(
       }
     );
 
-    const task = await collection.findOne({ task_id });
+    const task = await collection.findOne({ task_id, ...scopeFilter });
     await syncAgentTaskState(database, existingTask, task);
 
     if (existingTask.status !== 'completed' && task.status === 'completed') {
@@ -2832,9 +2875,9 @@ app.post('/session', async (req, res) => {
       ...session.toDatabaseFormat(),
     };
 
-    const db = getDb();
+    const db = getActiveDb();
     await db.collection('sessions').updateOne(
-      { sessionId: finalSessionId },
+      { sessionId: session.sessionId },
       {
         $set: {
           ...sessionData,
@@ -2884,7 +2927,7 @@ app.post('/session/heartbeat', async (req, res) => {
 
     if (success) {
       const session = sessionManager.getSession(sessionContext.sessionId);
-      const db = getDb();
+      const db = getActiveDb();
       await db.collection('sessions').updateOne(
         { sessionId: sessionContext.sessionId },
         {
@@ -2916,7 +2959,7 @@ app.post('/session/end', async (req, res) => {
 
     sessionManager.disconnectSession(sessionContext.sessionId, reason || 'manual_end');
 
-    const db = getDb();
+    const db = getActiveDb();
     await db.collection('sessions').updateOne(
       { sessionId: sessionContext.sessionId },
       {
@@ -2990,7 +3033,7 @@ app.get('/connections', async (req, res) => {
 
 app.get('/sessions/stats', async (req, res) => {
   try {
-    const db = getDb();
+    const db = getActiveDb();
 
     const [dbSessionCount, activeSessions, recentSessions] = await Promise.all([
       db.collection('sessions').countDocuments(),
@@ -3018,7 +3061,7 @@ app.post('/sessions/cleanup', async (req, res) => {
     const expired = sessionManager.cleanupExpiredSessions();
 
     for (const session of expired) {
-      const db = getDb();
+      const db = getActiveDb();
       await db.collection('sessions').updateOne(
         { sessionId: session.sessionId },
         {
@@ -3043,7 +3086,7 @@ app.post('/sessions/cleanup', async (req, res) => {
 
 app.get('/debug/sessions', async (req, res) => {
   try {
-    const db = getDb();
+    const db = getActiveDb();
 
     const [memoryStats, dbStats, connectionStats] = await Promise.all([
       Promise.resolve(sessionManager.getSessionStats()),

@@ -26,6 +26,11 @@ import {
 import { getIntegrationTools, handleIntegrationTool } from './mcp-integration-tools.js';
 import { getMCPRegistryTools, handleMCPRegistryTool } from './tools/mcpRegistryTools.js';
 import {
+  getExecutionTools,
+  EXECUTION_TOOL_NAMES,
+} from './src/interfaces/mcp-tools/execution-tool-definitions.js';
+import { handleExecutionTool } from './tools/executionTools.js';
+import {
   getDiscoveredTools,
   isProxiedTool,
   callProxiedTool,
@@ -1594,7 +1599,12 @@ let toolSchemaCache = null;
 
 function getToolSchemaMap() {
   const map = new Map();
-  const allTools = [...getTools(), ...getIntegrationTools(), ...getMCPRegistryTools()];
+  const allTools = [
+    ...getTools(),
+    ...getIntegrationTools(),
+    ...getMCPRegistryTools(),
+    ...getExecutionTools(),
+  ];
 
   for (const tool of allTools) {
     if (tool?.name && tool?.inputSchema && typeof tool.inputSchema === 'object') {
@@ -1832,9 +1842,16 @@ rl.on('line', (line) => {
         const baseTools = getTools();
         const integrationTools = getIntegrationTools();
         const mcpRegistryTools = getMCPRegistryTools();
+        const executionTools = getExecutionTools();
         const discoveredTools = getDiscoveredTools();
         return respond(request.id, {
-          tools: [...baseTools, ...integrationTools, ...mcpRegistryTools, ...discoveredTools],
+          tools: [
+            ...baseTools,
+            ...integrationTools,
+            ...mcpRegistryTools,
+            ...executionTools,
+            ...discoveredTools,
+          ],
         });
       }
 
@@ -2808,6 +2825,15 @@ rl.on('line', (line) => {
         if (mcpRegistryToolNames.includes(name)) {
           try {
             const result = await handleMCPRegistryTool(name, args, CONFIG);
+            return respond(request.id, result);
+          } catch (error) {
+            return respondError(request.id, -32603, error);
+          }
+        }
+
+        if (EXECUTION_TOOL_NAMES.includes(name)) {
+          try {
+            const result = await handleExecutionTool(name, args, CONFIG);
             return respond(request.id, result);
           } catch (error) {
             return respondError(request.id, -32603, error);

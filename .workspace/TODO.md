@@ -1,14 +1,70 @@
-# TODO — ngrok Integration into local-mcp-memory MCP Server
+# TODO — local-mcp-memory (consolidated task tracker)
 
-**Created:** 2026-10-06
-**Status:** PLANNED — no code changes made yet
+**Updated:** 2026-10-18
+**Merged from:** `/TODO.md` (root, removed) + `/.workspace/TODO.md` (ngrok plan) — two files with
+the same name existed in different locations and disagreed on status; **this file is now the
+single source of truth for pending work.**
+**Verified:** every status verdict below was checked against the actual codebase on 2026-10-18;
+evidence (file:line) is cited inline. No item is marked done without code proof.
+
+**Related trackers (kept separate — deliberately not duplicated here):**
+
+| Tracker               | Purpose               | Status summary (2026-10-18)                                                                                              |
+| --------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `PROJECT_ROADMAP.md`  | Phase-based roadmap   | 7 items struck through (done); 4 partial remain unstruck (project isolation, input validation, error handling, auto-fix) |
+| `ENHANCEMENT_PLAN.md` | v3.x enhancement plan | Dashboard + basic rate limiting + SQLite primary done; auth coverage, backup/restore, Prometheus, Pino pending           |
+
+> These two were left in place on purpose (`PROJECT_ROADMAP.md` contains uncommitted user edits).
+> Say the word if you want them folded in here too.
+
+---
+
+## Part 1 — Project-wide tasks (from former root `TODO.md`)
+
+**Result: 0 of 6 fully done · 1 partial (was incorrectly marked complete) · 5 pending.**
+
+### ✅ Done
+
+_None verified._
+
+### 🟨 Partial
+
+- [ ] **Feature 1: Audio Notification Tool** — the former root `TODO.md` marked this `[x]`
+      complete; verification says **PARTIAL**:
+  - ✅ `play_notification_sound` implemented + registered + schema'd
+    (`tools/notificationTools.js:134,168`, dispatch `mcp-server.js:2710`,
+    schema `src/interfaces/mcp-tools/tool-definitions.js:640`)
+  - ❌ `notify_user` — **does not exist anywhere** (0 matches repo-wide)
+  - ❌ `get_notification_history` — **does not exist anywhere** (0 matches repo-wide)
+  - ❌ persistence — `tools/notificationTools.js` imports only `fs`/`path`/`child_process`; no DB
+  - ❌ tests — no notification test file; not in the `npm test` chain
+  - ❌ docs — `README.md` and `CHANGELOG.md` contain 0 "notification" hits
+
+### ⬜ Pending
+
+- [ ] **Feature 2: Context Summarization Tool** (`summarize_context`) — absent from
+      `src/interfaces/mcp-tools/tool-definitions.js` and from every dispatch chain.
+- [ ] **External Database Connection tools** (MongoDB/SQLite/PostgreSQL inspection) — no matching
+      tools in `tools/index.js` or the tool definitions.
+- [ ] **Model Fallback Function** — no model-usage/limit fallback logic in `core/mcp/`.
+- [ ] **Write comprehensive tests for all new features** — none of the above have tests.
+- [ ] **Update documentation for new MCP tools and features** — README/CHANGELOG silent on the
+      notification tool.
+
+---
+
+## Part 2 — ngrok Integration Plan (former `.workspace/TODO.md`, preserved)
+
+> **Verified status (2026-10-18): PLANNED — nothing implemented.** `ngrok` has **0 matches** in
+> `tools/`, `utils/`, and `src/`; no `ngrokTools.js` / `ngrokManager.js` exists; every phase
+> checkbox below is unchecked. The environment baseline in §1 still holds (ngrok CLI 3.39.11
+> installed, no authtoken configured).
+
+**Created:** 2026-10-06 · **Status:** PLANNED — no code changes made yet
 **Goal:** Give AI agents ngrok tunnel control (start/stop/inspect tunnels) by adding `ngrok_*`
 tools to this MCP server in the **dev copy** (`projects\`), verified standalone, with
-authentication added last. Live rollout to agents happens only when the user promotes the dev
-copy to the live `website\` copy (out of scope — see F1).
-**Governance:** Planning artifact → `.workspace/` (per GOVERNANCE.md Rule 2, `.workspace/planning/` is the
-designated home for plans; root-level `TODO.md` must NOT be used for this — the existing root
-`TODO.md` is unrelated and untouched).
+authentication added last. Live rollout happens only when the user promotes the dev copy to the
+live `website\` copy (out of scope — see F1).
 
 ---
 

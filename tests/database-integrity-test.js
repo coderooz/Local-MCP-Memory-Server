@@ -5,7 +5,7 @@
  *
  * Proves the internal SQLite database is deployment-ready end to end:
  * - PRAGMAs (foreign_keys, WAL), integrity_check, foreign_key_check
- * - Schema completeness: 19 domain tables + 2 FTS tables + triggers + indexes
+ * - Schema completeness: 21 domain tables + 2 FTS tables + triggers + indexes
  * - Adapter fidelity: boolean/Date binding, unknown-column filtering,
  *   $inc, $set, dotted-path sort, $regex (REGEXP), $gte with Date params
  * - Foreign keys: rejection, ON DELETE CASCADE, ON DELETE SET NULL
@@ -57,6 +57,8 @@ const TABLES = [
   'emulators',
   'connections',
   'mcp_servers',
+  'execution_jobs',
+  'execution_approvals',
 ];
 
 const FTS_TABLES = ['contexts_fts', 'project_map_fts'];
@@ -172,7 +174,7 @@ async function runTests() {
     assert(violations.length === 0, `found ${violations.length} FK violations`);
   });
 
-  await test('all 19 domain tables exist', () => {
+  await test('all 21 domain tables exist', () => {
     const names = raw
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
       .all()
@@ -207,7 +209,7 @@ async function runTests() {
   // ---------------------------------------------------------------
   // B. Adapter fidelity
   // ---------------------------------------------------------------
-  await test('round-trip insert/read/delete on all 19 tables (extra columns filtered)', async () => {
+  await test('round-trip insert/read/delete on all 21 tables (extra columns filtered)', async () => {
     const seedCtxId = uuidv4();
     await db.collection('contexts').insertOne(
       normalizeMemory({

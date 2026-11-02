@@ -189,7 +189,6 @@ local-mcp-memory/
 ├── README.md                  # Project overview
 ├── SECURITY.md                # Security policy
 ├── SUPPORT.md                 # Support information
-├── TODO.md                    # Outstanding tasks
 │
 ├── .env.example               # Environment variable template
 ├── .editorconfig              # Editor configuration

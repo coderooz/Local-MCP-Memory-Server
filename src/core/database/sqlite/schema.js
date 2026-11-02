@@ -430,6 +430,55 @@ export function createSchema(db) {
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS execution_jobs (
+      id TEXT PRIMARY KEY,
+      agent TEXT NOT NULL DEFAULT 'unknown',
+      project TEXT NOT NULL DEFAULT 'default',
+      sessionId TEXT,
+      scope TEXT NOT NULL DEFAULT 'private',
+      job_id TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'task',
+      task_id TEXT,
+      task_version INTEGER,
+      runtime TEXT NOT NULL,
+      script_hash TEXT,
+      state TEXT NOT NULL DEFAULT 'validating',
+      effective_policy TEXT NOT NULL DEFAULT '{}',
+      approval_binding TEXT NOT NULL DEFAULT '{}',
+      requested_permissions TEXT NOT NULL DEFAULT '[]',
+      result TEXT,
+      error TEXT,
+      artifacts TEXT NOT NULL DEFAULT '[]',
+      changed_files TEXT NOT NULL DEFAULT '[]',
+      attempts INTEGER NOT NULL DEFAULT 1,
+      idempotency_key TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS execution_approvals (
+      id TEXT PRIMARY KEY,
+      agent TEXT NOT NULL DEFAULT 'unknown',
+      project TEXT NOT NULL DEFAULT 'default',
+      sessionId TEXT,
+      scope TEXT NOT NULL DEFAULT 'private',
+      approval_id TEXT NOT NULL,
+      binding TEXT NOT NULL,
+      script_hash TEXT,
+      runtime TEXT NOT NULL,
+      permissions TEXT NOT NULL DEFAULT '[]',
+      requesting_agent TEXT NOT NULL,
+      approver TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      revoked INTEGER NOT NULL DEFAULT 0,
+      version INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
   `);
 
   applyColumnMigrations(db);
@@ -561,6 +610,17 @@ function createIndexes(db) {
     CREATE INDEX IF NOT EXISTS idx_connections_session ON connections(sessionId);
     CREATE INDEX IF NOT EXISTS idx_connections_client ON connections(clientId);
     CREATE INDEX IF NOT EXISTS idx_connections_state ON connections(state, lastActivityAt);
+
+    CREATE INDEX IF NOT EXISTS idx_execution_jobs_job_id ON execution_jobs(job_id);
+    CREATE INDEX IF NOT EXISTS idx_execution_jobs_project ON execution_jobs(project, state);
+    CREATE INDEX IF NOT EXISTS idx_execution_jobs_agent ON execution_jobs(agent, project);
+    CREATE INDEX IF NOT EXISTS idx_execution_jobs_session ON execution_jobs(sessionId);
+    CREATE INDEX IF NOT EXISTS idx_execution_jobs_task ON execution_jobs(project, task_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_jobs_idempotency ON execution_jobs(idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_execution_approvals_approval_id ON execution_approvals(approval_id);
+    CREATE INDEX IF NOT EXISTS idx_execution_approvals_project ON execution_approvals(project, revoked, used);
+    CREATE INDEX IF NOT EXISTS idx_execution_approvals_expires ON execution_approvals(expires_at);
 
     CREATE INDEX IF NOT EXISTS idx_mcp_servers_project ON mcp_servers(project, status);
     CREATE INDEX IF NOT EXISTS idx_mcp_servers_server_id ON mcp_servers(server_id);

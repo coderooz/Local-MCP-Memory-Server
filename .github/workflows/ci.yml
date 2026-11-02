@@ -77,6 +77,33 @@ jobs:
       - name: Run tests
         run: npm test
 
+  isolation:
+    name: Isolation & Regression Harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Isolation suite (must pass)
+        run: npm run test:isolation
+
+      - name: Contract suite (must pass)
+        run: npm run test:contract
+
+      - name: Gap detectors (blocking WP-B regression gate)
+        run: npm run test:gaps
+
   build:
     name: Build
     runs-on: ubuntu-latest

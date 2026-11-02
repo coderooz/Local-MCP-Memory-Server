@@ -110,6 +110,10 @@ function buildDefaultConfig(projectName) {
       feedback: true,
       emulator: true,
       mcpRegistry: true,
+      // Local Execution Sandbox is DISABLED by default (fail-closed, D-002).
+      // Enabling it does NOT start process execution: the isolation backend
+      // must also be available (Docker daemon, Phase 2).
+      executionSandbox: false,
       memory: {
         enabled: true,
         optimization: true,

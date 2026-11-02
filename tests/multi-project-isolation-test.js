@@ -1,553 +1,421 @@
 #!/usr/bin/env node
 
 /**
- * Multi-Project Identity Isolation Tests
+ * Multi-Project Identity Isolation Tests (WP-A)
  *
- * Validates that:
- * 1. Each project has isolated data
- * 2. Agents from different projects cannot see each other's data
- * 3. No cross-project memory access
- * 4. Tasks are properly scoped to their projects
- * 5. Agents registered in one project are not visible in another
+ * Replaces the legacy MongoDB-era suite that:
+ *   - talked to a pre-running server on a fixed port (localhost:4000)
+ *   - connected directly to a MongoDB instance
+ *   - skipped every assertion when MongoDB was unavailable while still
+ *     reporting the suite as PASSED
+ *
+ * This suite runs against the REAL active runtime (server.js) on an isolated
+ * temporary database, an isolated project root and a loopback-only ephemeral
+ * port (see tests/helpers/isolation-harness.js).
+ *
+ * Coverage:
+ *   Part 0  harness self-verification (the detectors themselves are tested)
+ *   Part 1  project-scoped memory reads (search)
+ *   Part 2  activity log isolation
+ *   Part 3  agent registry isolation
+ *   Part 4  resource lock isolation
+ *   Part 5  task isolation
+ *
+ * Every isolation assertion is paired with a positive assertion (the owning
+ * project must be able to see its own record). Without that pairing a broken
+ * or empty endpoint would satisfy the isolation check vacuously.
+ *
+ * Known production gaps (by-ID cross-project access) are NOT asserted here;
+ * they are covered by tests/isolation-gap-detectors-test.js.
  */
 
-import { MongoClient } from 'mongodb';
+import {
+  assert,
+  createHarness,
+  createRunner,
+  detectByIdProjectLeak,
+  detectListLeak,
+  detectMutationLeak,
+} from './helpers/isolation-harness.js';
 
-const SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:4000';
-const TEST_PROJECTS = ['project-alpha', 'project-beta', 'project-gamma'];
-const TEST_AGENTS = ['agent-alpha-1', 'agent-alpha-2', 'agent-beta-1', 'agent-gamma-1'];
+const runner = createRunner({ title: 'Multi-Project Isolation' });
+const harness = await createHarness({ label: 'isolation' });
 
-let client = null;
-let db = null;
-let passed = 0;
-let failed = 0;
-const results = [];
-
-async function setup() {
-  try {
-    const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017';
-    client = new MongoClient(mongoUri);
-    await client.connect();
-    db = client.db('mcp_memory');
-    console.log('Connected to MongoDB\n');
-  } catch (error) {
-    console.log('MongoDB not available - using API-only tests\n');
-    db = null;
-  }
-}
-
-async function teardown() {
-  if (client) {
-    await client.close();
-  }
-}
-
-async function apiCall(endpoint, options = {}) {
-  const url = `${SERVER_URL}${endpoint}`;
-  const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
-  });
-  return { status: response.status, data: await response.json().catch(() => ({})) };
-}
-
-function test(name, fn) {
-  results.push({ name, status: 'pending' });
-  const idx = results.length - 1;
-
-  try {
-    const result = fn();
-    if (result instanceof Promise) {
-      result.then(() => {
-        results[idx].status = 'PASS';
-        passed++;
-        console.log(`✅ ${name}`);
-      }).catch(error => {
-        results[idx].status = 'FAIL';
-        results[idx].error = error.message;
-        failed++;
-        console.log(`❌ ${name}`);
-        console.log(`   Error: ${error.message}`);
-      });
-    } else {
-      results[idx].status = 'PASS';
-      passed++;
-      console.log(`✅ ${name}`);
-    }
-  } catch (error) {
-    results[idx].status = 'FAIL';
-    results[idx].error = error.message;
-    failed++;
-    console.log(`❌ ${name}`);
-    console.log(`   Error: ${error.message}`);
-  }
-}
-
-function assertEqual(actual, expected, msg = '') {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`${msg}\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`);
-  }
-}
-
-function assertTrue(value, msg = '') {
-  if (!value) throw new Error(`${msg} - Expected true`);
-}
-
-function assertFalse(value, msg = '') {
-  if (value) throw new Error(`${msg} - Expected false`);
-}
-
-function assertNotEqual(actual, unexpected, msg = '') {
-  if (JSON.stringify(actual) === JSON.stringify(unexpected)) {
-    throw new Error(`${msg}\nShould NOT equal: ${JSON.stringify(unexpected)}`);
-  }
-}
-
-function assertIncludes(haystack, needle, msg = '') {
-  if (!haystack.includes(needle)) {
-    throw new Error(`${msg}\nExpected "${haystack}" to include "${needle}"`);
-  }
-}
+const ALPHA = 'wp-a-alpha';
+const BETA = 'wp-a-beta';
+const stamp = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 
 console.log('='.repeat(60));
-console.log('🧪 Multi-Project Identity Isolation Tests\n');
+console.log('🧪 Multi-Project Identity Isolation Tests (WP-A)');
 console.log('='.repeat(60));
+console.log(`   runtime: ${harness.baseUrl} (loopback, ephemeral)`);
+console.log(`   database: ${harness.dbPath}`);
+console.log(`   project identity: ${harness.identity}`);
+console.log('');
 
-await setup();
+// ---------------------------------------------------------------------------
+// Part 0: harness self-verification
+// ---------------------------------------------------------------------------
 
-// ============================================
-// PART 1: Project Isolation via API
-// ============================================
+console.log('📋 PART 0: Harness Self-Verification\n');
 
-console.log('\n📋 PART 1: API Project Isolation Tests\n');
-
-test('API rejects requests without project header (dangerous)', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
-
-  const res = await apiCall('/context', {
-    method: 'POST',
-    body: JSON.stringify({ content: 'test content' })
-  });
-
-  if (res.status === 200 || res.status === 201) {
-    const context = res.data.context || res.data;
-    if (context.project === 'default') {
-      console.log("   ⚠️  WARNING: Context created with 'default' project without explicit request");
-    }
-  }
+await runner.test('by-id leak detector flags a foreign-project payload', () => {
+  const leak = detectByIdProjectLeak({ context: { id: 'x', project: BETA } }, ALPHA);
+  assert.ok(leak.leaked, 'A context owned by another project must be reported as a leak');
+  assert.equal(leak.ownerProject, BETA, 'Detector must report the owning project');
 });
 
-test('Contexts in different projects are isolated', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
-
-  await db.collection('contexts').deleteMany({ project: { $in: TEST_PROJECTS } });
-
-  const alphaContent = "This is alpha's secret data";
-  const betaContent = "This is beta's secret data";
-
-  const alphaRes = await apiCall('/context', {
-    method: 'POST',
-    body: JSON.stringify({ content: alphaContent, project: 'project-alpha' })
-  });
-
-  const betaRes = await apiCall('/context', {
-    method: 'POST',
-    body: JSON.stringify({ content: betaContent, project: 'project-beta' })
-  });
-
-  const alphaId = alphaRes.data.context?.id || alphaRes.data.id;
-  const betaId = betaRes.data.context?.id || betaRes.data.id;
-
-  assertTrue(alphaId, 'Alpha context should be created');
-  assertTrue(betaId, 'Beta context should be created');
-
-  const alphaFromBeta = await apiCall(`/context/${betaId}?project=project-alpha`);
-  const betaFromAlpha = await apiCall(`/context/${alphaId}?project=project-beta`);
-
-  const alphaData = alphaFromBeta.data.context || alphaFromBeta.data;
-  const betaData = betaFromAlpha.data.context || betaFromAlpha.data;
-
-  if (alphaData?.content) {
-    assertFalse(alphaData.content.includes(alphaContent),
-      "Alpha content should NOT be visible when querying with project-alpha from beta's ID");
-  }
-  if (betaData?.content) {
-    assertFalse(betaData.content.includes(betaContent),
-      "Beta content should NOT be visible when querying with project-beta from alpha's ID");
-  }
-
-  console.log(`   Alpha ID: ${alphaId}`);
-  console.log(`   Beta ID: ${betaId}`);
+await runner.test('by-id leak detector stays quiet for the owning project', () => {
+  const clean = detectByIdProjectLeak({ context: { id: 'x', project: ALPHA } }, ALPHA);
+  assert.ok(!clean.leaked, 'The owning project must not be reported as a leak');
 });
 
-test('Search results are filtered by project', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
-
-  const uniqueKeyword = `isolated-keyword-${Date.now()}`;
-
-  await apiCall('/context', {
-    method: 'POST',
-    body: JSON.stringify({
-      content: `Alpha has ${uniqueKeyword}`,
-      project: 'project-alpha'
-    })
-  });
-
-  await apiCall('/context', {
-    method: 'POST',
-    body: JSON.stringify({
-      content: `Beta has ${uniqueKeyword}`,
-      project: 'project-beta'
-    })
-  });
-
-  const alphaSearch = await apiCall(`/context/search?q=${uniqueKeyword}&project=project-alpha`);
-  const betaSearch = await apiCall(`/context/search?q=${uniqueKeyword}&project=project-beta`);
-
-  const alphaResults = alphaSearch.data.results || [];
-  const betaResults = betaSearch.data.results || [];
-
-  for (const r of alphaResults) {
-    if (r.content) {
-      assertIncludes(r.content, 'Alpha has', "Alpha search should return alpha's data");
-    }
-  }
-
-  for (const r of betaResults) {
-    if (r.content) {
-      assertIncludes(r.content, 'Beta has', "Beta search should return beta's data");
-    }
-  }
+await runner.test('mutation leak detector flags a changed field', () => {
+  const leak = detectMutationLeak({ content: 'before' }, { content: 'after' });
+  assert.ok(leak.mutated, 'A changed content field must be reported as a mutation');
+  assert.equal(leak.field, 'content', 'Detector must name the changed field');
 });
 
-// ============================================
-// PART 2: Agent Registry Isolation
-// ============================================
+await runner.test('mutation leak detector flags a changed task title', () => {
+  const leak = detectMutationLeak({ title: 'before' }, { title: 'after' });
+  assert.ok(leak.mutated, 'A changed task title must be reported as a mutation');
+  assert.equal(leak.field, 'title', 'Detector must name the changed title field');
+});
 
-console.log('\n📋 PART 2: Agent Registry Isolation Tests\n');
+await runner.test('mutation leak detector stays quiet for identical documents', () => {
+  const clean = detectMutationLeak({ content: 'same' }, { content: 'same' });
+  assert.ok(!clean.mutated, 'Identical documents must not be reported as a mutation');
+});
 
-test('Agents registered in one project are not visible in others', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
+await runner.test('list leak detector flags foreign projects only', () => {
+  const leak = detectListLeak([{ project: ALPHA }, { project: BETA }], ALPHA);
+  assert.ok(leak.leaked, 'A foreign project in a scoped list must be reported');
+  assert.ok(
+    leak.foreignProjects.every((p) => p === BETA),
+    'Only foreign projects may be reported'
+  );
 
-  await db.collection('agents').deleteMany({ agent_id: { $in: TEST_AGENTS } });
+  const clean = detectListLeak([{ project: ALPHA }], ALPHA);
+  assert.ok(!clean.leaked, 'Same-project records must not be reported as a leak');
+});
 
-  for (const agent of TEST_AGENTS) {
-    const project = agent.includes('alpha') ? 'project-alpha' :
-      agent.includes('beta') ? 'project-beta' : 'project-gamma';
-    await apiCall('/agent/register', {
-      method: 'POST',
-      body: JSON.stringify({ agent_id: agent, project, status: 'active' })
+// ---------------------------------------------------------------------------
+// Part 1: project-scoped memory reads
+// ---------------------------------------------------------------------------
+
+console.log('\n📋 PART 1: Project-Scoped Memory Reads\n');
+
+const alphaToken = `alphatoken${stamp}`;
+const betaToken = `betatoken${stamp}`;
+const globalToken = `globaltoken${stamp}`;
+
+await runner.test('project-scoped memories are created for both projects', async () => {
+  const alpha = await harness.request('POST', '/context', {
+    body: {
+      content: `alpha secret payload ${alphaToken}`,
+      project: ALPHA,
+      agent: 'wp-a-alpha-agent',
+      scope: 'project',
+    },
+  });
+
+  assert.equal(alpha.status, 200, 'Alpha context creation must succeed');
+  assert.ok(alpha.json && alpha.json.success, 'Alpha creation must report success');
+  assert.equal(alpha.json.context.project, ALPHA, 'Alpha context must be stored under ALPHA');
+
+  const beta = await harness.request('POST', '/context', {
+    body: {
+      content: `beta secret payload ${betaToken}`,
+      project: BETA,
+      agent: 'wp-a-beta-agent',
+      scope: 'project',
+    },
+  });
+
+  assert.equal(beta.status, 200, 'Beta context creation must succeed');
+  assert.equal(beta.json.context.project, BETA, 'Beta context must be stored under BETA');
+
+  const global = await harness.request('POST', '/context', {
+    body: {
+      content: `global shared payload ${globalToken}`,
+      project: ALPHA,
+      agent: 'wp-a-global-agent',
+      scope: 'global',
+    },
+  });
+
+  assert.equal(global.status, 200, 'Global context creation must succeed');
+});
+
+await runner.test('project-anchored search returns the owning project records', async () => {
+  const response = await harness.request('POST', '/context/search', {
+    body: { query: alphaToken, project: ALPHA, agent: 'wp-a-alpha-agent' },
+  });
+
+  assert.equal(response.status, 200, 'Anchored search must succeed');
+  assert.ok(Array.isArray(response.json), 'Anchored search must return an array');
+
+  const own = response.json.filter((entry) => entry.content.includes(alphaToken));
+  assert.ok(own.length > 0, 'The owning project must be able to find its own memory');
+});
+
+await runner.test('project-anchored search never returns another project records', async () => {
+  const response = await harness.request('POST', '/context/search', {
+    body: { query: alphaToken, project: ALPHA, agent: 'wp-a-alpha-agent' },
+  });
+
+  const leak = detectListLeak(response.json, ALPHA, ['global']);
+  assert.ok(
+    !leak.leaked,
+    `Anchored search leaked records owned by: ${leak.foreignProjects.join(', ')}`
+  );
+
+  const foreignContent = response.json.filter((entry) => entry.content.includes(betaToken));
+  assert.equal(
+    foreignContent.length,
+    0,
+    'Beta content must never appear in an alpha-anchored search result'
+  );
+});
+
+await runner.test('reverse anchoring is symmetric', async () => {
+  const response = await harness.request('POST', '/context/search', {
+    body: { query: betaToken, project: BETA, agent: 'wp-a-beta-agent' },
+  });
+
+  const own = response.json.filter((entry) => entry.content.includes(betaToken));
+  assert.ok(own.length > 0, 'Beta must be able to find its own memory');
+
+  const leak = detectListLeak(response.json, BETA, ['global']);
+  assert.ok(!leak.leaked, `Beta search leaked: ${leak.foreignProjects.join(', ')}`);
+});
+
+await runner.characterize(
+  'global-scoped memories are visible to every project-anchored search',
+  async () => {
+    const response = await harness.request('POST', '/context/search', {
+      body: { query: globalToken, project: BETA, agent: 'wp-a-beta-agent' },
     });
+
+    const visible = response.json.filter((entry) => entry.content.includes(globalToken));
+
+    return {
+      observed: `scope=global entries visible to a foreign project anchor: ${visible.length}`,
+      unresolved: false,
+    };
   }
+);
 
-  const alphaAgents = await apiCall('/agent/list?project=project-alpha');
-  const betaAgents = await apiCall('/agent/list?project=project-beta');
+// ---------------------------------------------------------------------------
+// Part 2: activity log isolation
+// ---------------------------------------------------------------------------
 
-  const alphaList = alphaAgents.data || [];
-  const betaList = betaAgents.data || [];
+console.log('\n📋 PART 2: Activity Log Isolation\n');
 
-  const alphaIds = alphaList.map(a => a.agent_id);
-  const betaIds = betaList.map(a => a.agent_id);
-
-  for (const id of alphaIds) {
-    assertFalse(id.includes('beta') || id.includes('gamma'),
-      'Alpha agent list should not include beta/gamma agents');
-  }
-
-  for (const id of betaIds) {
-    assertFalse(id.includes('alpha') || id.includes('gamma'),
-      'Beta agent list should not include alpha/gamma agents');
-  }
-
-  console.log(`   Alpha agents: ${alphaIds.join(', ') || 'none'}`);
-  console.log(`   Beta agents: ${betaIds.join(', ') || 'none'}`);
-});
-
-// ============================================
-// PART 3: Task Isolation
-// ============================================
-
-console.log('\n📋 PART 3: Task Isolation Tests\n');
-
-test('Tasks are scoped to their project', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
-
-  const uniqueTask = `isolated-task-${Date.now()}`;
-
-  await apiCall('/task', {
-    method: 'POST',
-    body: JSON.stringify({ title: `Alpha ${uniqueTask}`, project: 'project-alpha' })
+await runner.test('activity entries are isolated per project', async () => {
+  await harness.request('POST', '/activity', {
+    body: {
+      message: `alpha activity ${alphaToken}`,
+      project: ALPHA,
+      agent: 'wp-a-alpha-agent',
+    },
   });
 
-  await apiCall('/task', {
-    method: 'POST',
-    body: JSON.stringify({ title: `Beta ${uniqueTask}`, project: 'project-beta' })
+  await harness.request('POST', '/activity', {
+    body: {
+      message: `beta activity ${betaToken}`,
+      project: BETA,
+      agent: 'wp-a-beta-agent',
+    },
   });
 
-  const alphaTasks = await apiCall('/task/list?project=project-alpha');
-  const betaTasks = await apiCall('/task/list?project=project-beta');
+  const alpha = await harness.request('GET', `/activity?project=${ALPHA}&limit=100`);
+  assert.equal(alpha.status, 200, 'Activity read must succeed');
+  assert.ok(Array.isArray(alpha.json), 'Activity read must return an array');
 
-  const alphaList = alphaTasks.data.tasks || alphaTasks.data || [];
-  const betaList = betaTasks.data.tasks || betaTasks.data || [];
+  const own = alpha.json.filter((entry) => entry.message.includes(alphaToken));
+  assert.ok(own.length > 0, 'Alpha must see its own activity entries');
 
-  const alphaHasUnique = alphaList.some(t =>
-    (t.title || '').includes(uniqueTask) && (t.title || '').includes('Alpha')
-  );
-  const betaHasUnique = betaList.some(t =>
-    (t.title || '').includes(uniqueTask) && (t.title || '').includes('Beta')
-  );
+  const foreign = alpha.json.filter((entry) => entry.message.includes(betaToken));
+  assert.equal(foreign.length, 0, 'Alpha must not see beta activity entries');
 
-  assertTrue(alphaHasUnique, "Alpha project should have alpha's task");
-  assertTrue(betaHasUnique, "Beta project should have beta's task");
+  const leak = detectListLeak(alpha.json, ALPHA, ['global', 'default']);
+  assert.ok(!leak.leaked, `Activity list leaked: ${leak.foreignProjects.join(', ')}`);
 });
 
-// ============================================
-// PART 4: Resource Lock Isolation
-// ============================================
+// ---------------------------------------------------------------------------
+// Part 3: agent registry isolation
+// ---------------------------------------------------------------------------
 
-console.log('\n📋 PART 4: Resource Lock Isolation Tests\n');
+console.log('\n📋 PART 3: Agent Registry Isolation\n');
 
-test('Resource locks are project-scoped', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
+await runner.test('agent listings are isolated per project', async () => {
+  // Seeded at storage level on purpose: POST /agent/register relies on
+  // { upsert: true }, which the SQLite adapter does not implement, so the
+  // registration route currently persists nothing (see WP-A finding N1 and
+  // tests/isolation-contract-test.js). Seeding directly keeps this
+  // isolation assertion meaningful instead of vacuously empty.
+  const now = new Date().toISOString();
 
-  const resourceName = `shared-resource-${Date.now()}`;
-
-  const alphaAcquire = await apiCall('/lock/acquire', {
-    method: 'POST',
-    body: JSON.stringify({
-      resource: resourceName,
-      project: 'project-alpha',
-      agent: 'agent-alpha-1'
-    })
+  await harness.db.collection('agents').insertOne({
+    id: `agent-alpha-${stamp}`,
+    agent_id: 'wp-a-alpha-agent',
+    agent: 'wp-a-alpha-agent',
+    project: ALPHA,
+    scope: 'project',
+    status: 'active',
+    last_seen: now,
+    createdAt: now,
+    updatedAt: now,
   });
 
-  const betaAcquire = await apiCall('/lock/acquire', {
-    method: 'POST',
-    body: JSON.stringify({
-      resource: resourceName,
-      project: 'project-beta',
-      agent: 'agent-beta-1'
-    })
+  await harness.db.collection('agents').insertOne({
+    id: `agent-beta-${stamp}`,
+    agent_id: 'wp-a-beta-agent',
+    agent: 'wp-a-beta-agent',
+    project: BETA,
+    scope: 'project',
+    status: 'active',
+    last_seen: now,
+    createdAt: now,
+    updatedAt: now,
   });
 
-  assertTrue(alphaAcquire.data.acquired === true, 'Alpha should acquire lock in alpha project');
-  assertTrue(betaAcquire.data.acquired === true, 'Beta should acquire lock in beta project (different project scope)');
+  const alpha = await harness.request('GET', `/agent/list?project=${ALPHA}`);
+  assert.equal(alpha.status, 200, 'Agent list must succeed');
+  assert.ok(Array.isArray(alpha.json), 'Agent list must return an array');
 
-  const alphaLocks = await apiCall('/lock/list?project=project-alpha');
-  const betaLocks = await apiCall('/lock/list?project=project-beta');
+  const own = alpha.json.filter((entry) => entry.agent_id === 'wp-a-alpha-agent');
+  assert.ok(own.length > 0, 'Alpha must see its own registered agent');
 
-  const alphaLockList = alphaLocks.data.locks || alphaLocks.data || [];
-  const betaLockList = betaLocks.data.locks || betaLocks.data || [];
+  const foreign = alpha.json.filter((entry) => entry.agent_id === 'wp-a-beta-agent');
+  assert.equal(foreign.length, 0, 'Alpha must not see the beta agent');
 
-  const alphaHasResource = alphaLockList.some(l => l.resource === resourceName);
-  const betaHasResource = betaLockList.some(l => l.resource === resourceName);
-
-  assertTrue(alphaHasResource, "Alpha project should have alpha's lock");
-  assertTrue(betaHasResource, "Beta project should have beta's lock");
-
-  const alphaHasBeta = alphaLockList.some(l => l.locked_by === 'agent-beta-1');
-  const betaHasAlpha = betaLockList.some(l => l.locked_by === 'agent-alpha-1');
-
-  assertFalse(alphaHasBeta, "Alpha project should NOT have beta's lock");
-  assertFalse(betaHasAlpha, "Beta project should NOT have alpha's lock");
-
-  console.log('   ✅ Both projects can lock same resource name (different scopes)');
-  console.log('   ✅ Locks are properly isolated by project');
+  const leak = detectListLeak(alpha.json, ALPHA);
+  assert.ok(!leak.leaked, `Agent list leaked: ${leak.foreignProjects.join(', ')}`);
 });
 
-// ============================================
-// PART 5: Activity Log Isolation
-// ============================================
+// ---------------------------------------------------------------------------
+// Part 4: resource lock isolation
+// ---------------------------------------------------------------------------
 
-console.log('\n📋 PART 5: Activity Log Isolation Tests\n');
+console.log('\n📋 PART 4: Resource Lock Isolation\n');
 
-test('Activity logs are filtered by project', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
+const sharedResource = `wpa-shared-resource-${stamp}`;
 
-  const uniqueActivity = `activity-${Date.now()}`;
-
-  await apiCall('/activity', {
-    method: 'POST',
-    body: JSON.stringify({
-      message: `Alpha ${uniqueActivity}`,
-      project: 'project-alpha',
-      agent: 'agent-alpha-1'
-    })
+await runner.test('the same resource name is independently lockable per project', async () => {
+  const alpha = await harness.request('POST', '/lock/acquire', {
+    body: {
+      resource: sharedResource,
+      project: ALPHA,
+      agent: 'wp-a-alpha-agent',
+      expiresInMs: 60000,
+    },
   });
 
-  await apiCall('/activity', {
-    method: 'POST',
-    body: JSON.stringify({
-      message: `Beta ${uniqueActivity}`,
-      project: 'project-beta',
-      agent: 'agent-beta-1'
-    })
+  assert.equal(alpha.status, 200, 'Alpha lock request must succeed');
+  assert.equal(alpha.json.acquired, true, 'Alpha must acquire its own project-scoped lock');
+
+  const beta = await harness.request('POST', '/lock/acquire', {
+    body: {
+      resource: sharedResource,
+      project: BETA,
+      agent: 'wp-a-beta-agent',
+      expiresInMs: 60000,
+    },
   });
 
-  const alphaActivity = await apiCall('/activity?project=project-alpha');
-  const betaActivity = await apiCall('/activity?project=project-beta');
-
-  const alphaLogs = alphaActivity.data || [];
-  const betaLogs = betaActivity.data || [];
-
-  const alphaHasAlpha = alphaLogs.some(l =>
-    (l.message || '').includes(uniqueActivity) && (l.message || '').includes('Alpha')
+  assert.equal(beta.status, 200, 'Beta lock request must succeed');
+  assert.equal(
+    beta.json.acquired,
+    true,
+    'A lock in another project must not block this project (project-scoped locks)'
   );
-  const betaHasBeta = betaLogs.some(l =>
-    (l.message || '').includes(uniqueActivity) && (l.message || '').includes('Beta')
-  );
-
-  assertTrue(alphaHasAlpha, "Alpha activity should show alpha's log");
-  assertTrue(betaHasBeta, "Beta activity should show beta's log");
 });
 
-// ============================================
-// PART 6: Cross-Project Leakage Detection
-// ============================================
+await runner.test('lock listings are isolated per project', async () => {
+  const alpha = await harness.request('GET', `/lock/list?project=${ALPHA}`);
+  assert.equal(alpha.status, 200, 'Lock list must succeed');
+  assert.ok(Array.isArray(alpha.json), 'Lock list must return an array');
 
-console.log('\n📋 PART 6: Cross-Project Leakage Detection\n');
+  const own = alpha.json.filter((lock) => lock.resource === sharedResource);
+  assert.ok(own.length > 0, 'Alpha must see its own lock');
 
-test("No 'unknown' or 'default' project leakage in agent registry", async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
-
-  const agents = await db.collection('agents').find({}).toArray();
-
-  const unknownAgents = agents.filter(a =>
-    a.project === 'unknown' || a.project === 'default'
+  const foreign = alpha.json.filter(
+    (lock) => lock.resource === sharedResource && lock.project !== ALPHA
   );
+  assert.equal(foreign.length, 0, 'Alpha must not see a lock owned by another project');
 
-  if (unknownAgents.length > 0) {
-    console.log(`   ⚠️  Found ${unknownAgents.length} legacy agents with unknown/default project:`);
-    for (const a of unknownAgents.slice(0, 5)) {
-      console.log(`      - ${a.agent_id}: project="${a.project}"`);
-    }
-    if (unknownAgents.length > 5) {
-      console.log(`      ... and ${unknownAgents.length - 5} more`);
-    }
-    console.log('   ℹ️  These are likely from before project identity was fixed');
-    console.log('   ℹ️  Run cleanup or reset to remove legacy data');
-  } else {
-    console.log('   ✅ All agents have valid project configuration');
-  }
+  const leak = detectListLeak(alpha.json, ALPHA);
+  assert.ok(!leak.leaked, `Lock list leaked: ${leak.foreignProjects.join(', ')}`);
 });
 
-test('Context entries have valid project field', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
+// ---------------------------------------------------------------------------
+// Part 5: task isolation
+// ---------------------------------------------------------------------------
 
-  const contexts = await db.collection('contexts').find({}).limit(100).toArray();
+console.log('\n📋 PART 5: Task Isolation\n');
 
-  const invalidContexts = contexts.filter(c =>
-    !c.project || c.project === 'unknown' || c.project === 'default'
+const taskTitle = `wpa-task-${stamp}`;
+
+await runner.test('task listings are isolated per project', async () => {
+  const alpha = await harness.request('POST', '/task', {
+    body: {
+      title: `${taskTitle} alpha`,
+      project: ALPHA,
+      agent: 'wp-a-alpha-agent',
+      priority: 3,
+    },
+  });
+
+  assert.equal(alpha.status, 200, 'Alpha task creation must succeed');
+  assert.ok(alpha.json && alpha.json.success, 'Alpha task creation must report success');
+
+  await harness.request('POST', '/task', {
+    body: {
+      title: `${taskTitle} beta`,
+      project: BETA,
+      agent: 'wp-a-beta-agent',
+      priority: 3,
+    },
+  });
+
+  const list = await harness.request('GET', `/task/list?project=${ALPHA}&limit=100`);
+  assert.equal(list.status, 200, 'Task list must succeed');
+  assert.ok(Array.isArray(list.json), 'Task list must return an array');
+
+  const own = list.json.filter((task) => (task.title || '').includes(`${taskTitle} alpha`));
+  assert.ok(own.length > 0, 'Alpha must see its own task');
+
+  const foreign = list.json.filter((task) => (task.title || '').includes(`${taskTitle} beta`));
+  assert.equal(foreign.length, 0, 'Alpha must not see the beta task');
+
+  const leak = detectListLeak(list.json, ALPHA);
+  assert.ok(!leak.leaked, `Task list leaked: ${leak.foreignProjects.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------
+// Teardown evidence
+// ---------------------------------------------------------------------------
+
+const teardown = await harness.close();
+
+console.log('\n📋 PART 6: Teardown Evidence\n');
+
+await runner.test('the harness released every resource it created', () => {
+  assert.ok(teardown.listenerClosed, 'The HTTP listener must be closed');
+  assert.ok(teardown.portReleased, 'The ephemeral port must be released');
+  assert.ok(teardown.databaseClosed, 'The database connection must be closed');
+  assert.ok(teardown.tempRootRemoved, 'The temporary root must be removed');
+  assert.ok(teardown.dbFileRemoved, 'The temporary database file must be removed');
+  assert.ok(teardown.projectRootRemoved, 'The temporary project root must be removed');
+});
+
+await runner.test('the harness stayed inside its request budget', () => {
+  assert.ok(
+    teardown.requestsIssued <= 100,
+    `The suite issued ${teardown.requestsIssued} requests (budget 100)`
   );
-
-  const validCount = contexts.length - invalidContexts.length;
-  console.log(`   Valid contexts: ${validCount}/${contexts.length}`);
-
-  if (invalidContexts.length > 0) {
-    console.log(`   ⚠️  ${invalidContexts.length} contexts have invalid project`);
-  }
 });
 
-test('Task entries have valid project field', async () => {
-  if (!db) {
-    console.log('   Skipping - MongoDB not available');
-    return;
-  }
-
-  const tasks = await db.collection('tasks').find({}).limit(100).toArray();
-
-  const invalidTasks = tasks.filter(t =>
-    !t.project || t.project === 'unknown' || t.project === 'default'
-  );
-
-  const validCount = tasks.length - invalidTasks.length;
-  console.log(`   Valid tasks: ${validCount}/${tasks.length}`);
-
-  if (invalidTasks.length > 0) {
-    console.log(`   ⚠️  ${invalidTasks.length} tasks have invalid project`);
-  }
-});
-
-// ============================================
-// PART 7: Project Identity Resolution
-// ============================================
-
-console.log('\n📋 PART 7: Project Identity Resolution Tests\n');
-
-test('Identity resolution uses correct project from .mcp-project', async () => {
-  const { resolveProjectIdentity, CONFIG_HIERARCHY } = await import('../utils/projectIdentity.js');
-
-  const identity = resolveProjectIdentity();
-
-  assertTrue(identity.project, 'Should have project resolved');
-  assertTrue(identity.project !== 'default', "Should not resolve to 'default' project");
-  assertTrue(identity.agent, 'Should have agent resolved');
-  assertTrue(identity.agent !== 'unknown', "Should not resolve to 'unknown' agent");
-  assertTrue(identity.source, 'Should have source');
-
-  console.log(`   Project: ${identity.project}`);
-  console.log(`   Agent: ${identity.agent}`);
-  console.log(`   Source: ${identity.source}`);
-  console.log(`   Hierarchy: ${identity.hierarchy || 'N/A'}`);
-});
-
-// ============================================
-// SUMMARY
-// ============================================
-
-await new Promise(r => setTimeout(r, 500));
-
-console.log('\n' + '='.repeat(60));
-console.log('\n📊 Multi-Project Isolation Results\n');
-console.log(`   Tests: ${passed + failed}`);
-console.log(`   ✅ Passed: ${passed}`);
-console.log(`   ❌ Failed: ${failed}`);
-
-if (failed === 0) {
-  console.log('\n🎉 All multi-project isolation tests passed!\n');
-  console.log('Isolation verified:');
-  console.log('  ✅ Project-scoped context isolation');
-  console.log('  ✅ Agent registry project filtering');
-  console.log('  ✅ Task project scope enforcement');
-  console.log('  ✅ Resource lock project isolation');
-  console.log('  ✅ Activity log project filtering');
-  console.log('  ✅ No unknown/default project leakage\n');
-} else {
-  console.log('\n⚠️  Some tests failed - review output above\n');
-  for (const r of results) {
-    if (r.status === 'FAIL') {
-      console.log(`  ❌ ${r.name}: ${r.error}`);
-    }
-  }
-}
-
-await teardown();
-
-process.exit(failed > 0 ? 1 : 0);
+process.exit(runner.finish());

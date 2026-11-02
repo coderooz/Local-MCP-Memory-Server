@@ -2,7 +2,7 @@
 
 **Project:** local-mcp-memory
 **Version:** 2.6.0
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-10-17
 **Status:** Active
 
 ---
@@ -274,12 +274,15 @@ LOCKED → RELEASED (explicit release)
 
 **Flow:**
 
-1. Request arrives at `/dashboard` or `/ui`
+1. Request arrives at `/dashboard`, `/ui`, or a deeper path under `/dashboard`
 2. If `/ui`, redirect 302 to `/dashboard`
 3. Read `dashboard/index.html` from disk
 4. Return HTML with `Content-Type: text/html`
-5. Browser renders single-page application
-6. SPA makes API calls to same server for data
+5. Any deeper path (e.g. `/dashboard/memory`) serves the same app shell instead of 404ing
+6. Browser renders single-page application
+7. SPA resolves its initial view from `location.hash` via `viewFromHash()`; an empty or unknown hash falls back to `overview`
+8. Nav clicks are plain anchor navigation — the browser changes the hash and drives `loadView()` through `hashchange`, so Back/Forward and refresh restore the same view
+9. SPA makes API calls to same server for data
 
 ### 11. Authentication Login Flow
 
@@ -352,6 +355,24 @@ AUTHENTICATED → EXPIRED (JWT TTL exceeded)
 
 **Error paths:** see `ERROR_PATHS.md` → `## Registry Errors` (`E-REG-001` … `E-REG-004`).
 
+### 15. Execution Sandbox Flow (submit → approve → execute → collect)
+
+**Entry:** `tools/executionTools.js` (MCP: `execution_submit/status/result/list/cancel/approve`) → `src/core/execution/index.js`
+
+**Flow:**
+
+1. `execution_submit` — resolve trusted identity/project (server-injected `CONFIG.agent`/`CONFIG.project`; caller identity ignored), replay by idempotency key, hash the script (`sha256`), resolve the runtime via the trusted allowlist, compute the effective policy (requested perms can only narrow), persist an `execution_jobs` row (`validating`), then route: pre-approved task → `queued`; approval-required → `awaiting_approval` (returns a hash-bound approval binding). Audited via `audit.js`.
+2. `execution_approve` — reject self-approval (`POLICY_DENIED`), grant a `(scriptHash, project, runtime, permissions)`-bound expiring approval (replay-proof), transition `awaiting_approval` → `queued`. Audited.
+3. `execution_cancel` — idempotent: non-terminal job → `cancelling` (audited); terminal/cancelling → no-op returning current state.
+4. `executeJob` — **Phase 1 ALWAYS refuses (fail-closed):** the Docker backend `isAvailable()` is false and no code runs in-process; the job transitions to `failed` with `SANDBOX_START_FAILED`. Audited + metric recorded. **No process is ever spawned.**
+5. `execution_status` / `execution_result` / `execution_list` — project-scoped reads of the durable job record (bounded).
+
+**State machine:** 15 states in `src/core/execution/state-machine.js`; invalid transitions throw `INVALID_STATE_TRANSITION`; transitions are concurrency-safe (optimistic `version`). `failed` is reachable from `validating`/`awaiting_approval`/`queued`/`running`.
+
+**Isolation (Phase 2+):** real execution targets a Docker container via the replaceable `sandbox-adapter.js`; the original working tree is never mounted writable. Blocked while the Docker daemon is down.
+
+**Error paths:** stable codes in `src/core/execution/errors.js` (`IDENTITY_REQUIRED`, `PROJECT_SCOPE_DENIED`, `POLICY_DENIED`, `APPROVAL_REQUIRED`, `APPROVAL_EXPIRED`, `SANDBOX_START_FAILED`, `INVALID_STATE_TRANSITION`, `JOB_NOT_FOUND`, `IDEMPOTENCY_CONFLICT`, …).
+
 ---
 
 ## State Management
@@ -393,30 +414,31 @@ AUTHENTICATED → EXPIRED (JWT TTL exceeded)
 
 ### Inbound Endpoints (Express HTTP API)
 
-| Endpoint Pattern | Method              | Domain              |
-| ---------------- | ------------------- | ------------------- |
-| `/context/*`     | POST/GET/PUT        | Memory              |
-| `/task/*`        | POST/GET/PUT        | Tasks               |
-| `/issue/*`       | POST/GET/PUT        | Issues              |
-| `/agent/*`       | POST/GET            | Agents              |
-| `/message/*`     | POST/GET            | Messages            |
-| `/activity/*`    | GET                 | Activity            |
-| `/locks/*`       | POST/GET/DELETE     | Resource Locks      |
-| `/project/*`     | POST/GET            | Project Descriptors |
-| `/metrics`       | GET                 | Metrics             |
-| `/logs`          | GET                 | Logs                |
-| `/feedback/*`    | POST/GET/PUT        | Feedback            |
-| `/chat/*`        | POST/GET/DELETE     | Chat Rooms          |
-| `/reset`         | POST                | System Reset        |
-| `/auth/login`    | POST                | Authentication      |
-| `/auth/register` | POST                | User Registration   |
-| `/auth/me`       | GET                 | Current User        |
-| `/auth/refresh`  | POST                | Token Refresh       |
-| `/auth/api-keys` | POST/GET/DELETE     | API Key Management  |
-| `/auth/health`   | GET                 | Auth Health         |
-| `/dashboard`     | GET                 | Dashboard UI        |
-| `/ui`            | GET                 | Dashboard Redirect  |
-| `/mcp/*`         | POST/GET/PUT/DELETE | MCP Registry        |
+| Endpoint Pattern | Method              | Domain                 |
+| ---------------- | ------------------- | ---------------------- |
+| `/context/*`     | POST/GET/PUT        | Memory                 |
+| `/task/*`        | POST/GET/PUT        | Tasks                  |
+| `/issue/*`       | POST/GET/PUT        | Issues                 |
+| `/agent/*`       | POST/GET            | Agents                 |
+| `/message/*`     | POST/GET            | Messages               |
+| `/activity/*`    | GET                 | Activity               |
+| `/locks/*`       | POST/GET/DELETE     | Resource Locks         |
+| `/project/*`     | POST/GET            | Project Descriptors    |
+| `/metrics`       | GET                 | Metrics                |
+| `/logs`          | GET                 | Logs                   |
+| `/feedback/*`    | POST/GET/PUT        | Feedback               |
+| `/chat/*`        | POST/GET/DELETE     | Chat Rooms             |
+| `/reset`         | POST                | System Reset           |
+| `/auth/login`    | POST                | Authentication         |
+| `/auth/register` | POST                | User Registration      |
+| `/auth/me`       | GET                 | Current User           |
+| `/auth/refresh`  | POST                | Token Refresh          |
+| `/auth/api-keys` | POST/GET/DELETE     | API Key Management     |
+| `/auth/health`   | GET                 | Auth Health            |
+| `/dashboard`     | GET                 | Dashboard UI           |
+| `/dashboard/*`   | GET                 | Dashboard SPA Fallback |
+| `/ui`            | GET                 | Dashboard Redirect     |
+| `/mcp/*`         | POST/GET/PUT/DELETE | MCP Registry           |
 
 ### Database Operations
 
@@ -475,6 +497,21 @@ AUTHENTICATED → EXPIRED (JWT TTL exceeded)
 
 ## Reference Maintenance Log
 
+### 2026-10-18
+
+**Change:** Local Execution Sandbox — Phase 1 (contracts + policy foundation) added
+
+**Classification:** ADDED
+
+**Updated:**
+
+- Added execution path `### 15. Execution Sandbox Flow` (submit → approve → execute → collect, fail-closed)
+- Registered `src/core/execution/*`, `tools/executionTools.js`, the 6 execution tool schemas,
+  `execution_jobs`/`execution_approvals` tables, and the two execution test suites (PRI)
+- Recorded decision D-009 (audit reuses existing activity/metrics services)
+
+**Verification:** FULL (flows vs `src/core/execution/index.js`, `audit.js`, `state-machine.js`; tools vs `tools/executionTools.js`; 40 execution tests green)
+
 ### 2026-10-07
 
 **Change:** Registry governance closeout (gap G13) — added the MCP registry execution path
@@ -523,6 +560,20 @@ AUTHENTICATED → EXPIRED (JWT TTL exceeded)
 - Updated cross-references to include visualizer
 
 **Verification:** FULL
+
+### 2026-10-17
+
+**Change:** Dashboard client-side routing (commit `643fa30`)
+
+**Classification:** UPDATED
+
+**Updated:**
+
+- Section 10 (Dashboard Serving Flow): added the `/dashboard/*` SPA fallback, initial-view resolution via `viewFromHash()` (empty/unknown hash → `overview`), and `hashchange`-driven navigation
+- Inbound endpoints table: added `GET /dashboard/*` (SPA fallback)
+- Last Updated: 2026-09-19 → 2026-10-17
+
+**Verification:** SPOT (flow vs `dashboard/routes.js` and `dashboard/index.html`)
 
 ### 2026-09-19
 

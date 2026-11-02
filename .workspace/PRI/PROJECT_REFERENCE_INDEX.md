@@ -2,7 +2,7 @@
 
 **Project:** local-mcp-memory
 **Version:** 2.6.0
-**Last Updated:** 2026-10-07
+**Last Updated:** 2026-10-17
 **Status:** Active
 
 ---
@@ -12,8 +12,8 @@
 | Field              | Value                                                                    |
 | ------------------ | ------------------------------------------------------------------------ |
 | Created            | 2026-09-19                                                               |
-| Last Updated       | 2026-10-07                                                               |
-| Last Verified      | 2026-10-07                                                               |
+| Last Updated       | 2026-10-17                                                               |
+| Last Verified      | 2026-10-17                                                               |
 | Verification Type  | FULL                                                                     |
 | Canonical Location | `.workspace/PRI/PROJECT_REFERENCE_INDEX.md`                              |
 | Companion          | `.workspace/LFI/LOGIC_FLOW_INDEX.md`                                     |
@@ -57,8 +57,8 @@
 
 ```
 local-mcp-memory/
-├── mcp-server.js              # MCP stdio server entry (2766 lines)
-├── server.js                  # Express HTTP API server (3291 lines)
+├── mcp-server.js              # MCP stdio server entry (2879 lines)
+├── server.js                  # Express HTTP API server (3314 lines)
 ├── mcp-shim.js                # MCP shim/bridge between MCP and API
 ├── startMemoryServer.js       # Shared memory server startup logic
 ├── agent-instruction.js       # Global agent instructions for MCP
@@ -186,6 +186,35 @@ Contains:
 - `crypto.js` — AES-256-GCM credential encryption (`enc:v1:` prefix, keyed by `MCP_MASTER_SECRET`)
 - `../../../tools/mcpRegistryTools.js` — 9 MCP tool definitions + handler dispatcher
 
+### `src/core/execution/`
+
+Type: Execution Sandbox domain (NEW — Local Execution Sandbox, Phase 1)
+
+Purpose: Orchestrates approved-task and restricted-script execution behind policy, approval,
+durable job state, and audit. **Fail-closed:** in Phase 1 no process is ever spawned; real
+execution is gated on a Docker isolation backend (Phase 2) and a feature flag
+(`features.executionSandbox`, default `false`).
+
+Modules:
+
+- `errors.js` — Stable error codes (`IDENTITY_REQUIRED`, `POLICY_DENIED`, `SANDBOX_START_FAILED`, …)
+- `state-machine.js` — Validated 15-state job lifecycle + transition table
+- `policy.js` — Deterministic effective-policy computation (requested perms can only narrow)
+- `runtime-registry.js` — Trusted runtime allowlist (python/node); never client-supplied paths
+- `tasks-registry.js` — Versioned approved-task definitions (read-only)
+- `repository.js` — Durable `execution_jobs` persistence, optimistic concurrency, idempotency
+- `approval.js` — Hash-bound, expiring, replay-proof approvals; self-approval forbidden
+- `sandbox-adapter.js` — Replaceable backend abstraction (Docker stub, fail-closed)
+- `workspace.js` — Isolated-workspace manager interface (containment in Phase 3)
+- `result-collector.js` — Bounded result normalization + redaction
+- `audit.js` — Narrow adapter over existing activity/metrics services (redaction + truncation)
+- `index.js` — Execution service orchestrating the above
+- `service-bridge.js` — Bridges tool handlers to the collection-wrapped `getDb`
+
+Integrations: `src/interfaces/mcp-tools/execution-tool-definitions.js` (6 tool schemas) and
+`tools/executionTools.js` (handlers), registered additively in `mcp-server.js`. Persistence in
+`src/core/database/sqlite/schema.js` (`execution_jobs`, `execution_approvals` + indexes).
+
 ### `src/domains/`
 
 Type: Domain services
@@ -285,11 +314,13 @@ Purpose: Web-based UI for managing memory, tasks, issues, and agents.
 
 Contains:
 
-- `index.html` — Dashboard web UI (single-page application)
-- `routes.js` — Express routes for serving the dashboard
+- `index.html` — Dashboard web UI (single-page application with client-side hash router)
+- `routes.js` — Express routes serving the app shell plus a `/dashboard/*` SPA fallback (54 lines)
 
 Features:
 
+- Client-side hash routing (`#/overview`, `#/memory`, `#/tasks`, …) — deep-linkable, refresh-safe, and Back/Forward-aware; unknown hashes fall back to Overview
+- Server-side SPA fallback: any path under `/dashboard` serves the app shell instead of 404
 - Overview dashboard with stats (tasks, issues, agents, activity)
 - Memory search interface
 - Task management view
@@ -323,6 +354,7 @@ Contains:
 - `emulatorTools.js` — Android emulator tools
 - `feedbackTools.js` — Feedback tools
 - `mcpRegistryTools.js` — MCP server registry tools (9 tools + handler dispatcher)
+- `executionTools.js` — Execution Sandbox tools (6 tools: execution_submit/status/result/list/cancel/approve + handler dispatcher)
 - `notificationTools.js` — Notification/alert tools
 - `store_context.js` — Memory storage tool
 
@@ -356,9 +388,9 @@ Type: Test suite
 
 Purpose: Automated tests for all subsystems.
 
-Contains 23 test files covering: app E2E (DB→UI), browser, chaos, chat, conflict detection, database integrity, emulator, feedback, integration, MCP architecture, MCP chaos resilience, MCP registry, MCP resilience, MCP stdio stabilization, multi-agent coordination, multi-node, multi-project isolation, persistent agent registry, session isolation, stress, validation, vulnerability.
+Contains 25 test files covering: app E2E (DB→UI), browser, chaos, chat, conflict detection, database integrity, emulator, **execution policy (24)**, **execution integration (16)**, feedback, integration, MCP architecture, MCP chaos resilience, MCP registry, MCP resilience, MCP stdio stabilization, multi-agent coordination, multi-node, multi-project isolation, persistent agent registry, session isolation, stress, validation, vulnerability.
 
-`npm test` runs `npm run check` (syntax) plus 5 suites — feedback (7), chat (9), mcp-registry (24), database integrity (34), app E2E (15) — 89 tests total.
+`npm test` runs `npm run check` (syntax) plus 5 suites — feedback (7), chat (9), mcp-registry (24), database integrity (34), app E2E (15) — 89 tests total. The two Execution Sandbox suites are run standalone: `npm run test:execution` (policy 24 + integration 16 = 40 tests, no process spawned). The `npm test` aggregate gate is unchanged by the sandbox work; app E2E (15) is red for the pre-existing environmental runtime-identity reason (see `FAILURE_REGISTER.md` FR-003).
 
 ### `docs/`
 
@@ -677,6 +709,21 @@ Database Flow:
 ---
 
 ## Reference Maintenance Log
+
+### 2026-10-17
+
+**Change:** Post-snapshot sync with commit `643fa30` — dashboard routing + line-count refresh
+
+**Classification:** UPDATED
+
+**Updated:**
+
+- Root Structure: corrected stale line counts `mcp-server.js` 2766 → 2879, `server.js` 3291 → 3314
+- `### dashboard/`: documented the client-side hash router in `index.html` and the `/dashboard/*` SPA fallback in `routes.js` (now 54 lines)
+- `### dashboard/` Features: added hash routing (deep links, refresh, Back/Forward, unknown-hash fallback → Overview) and the server-side fallback
+- Last Updated / Last Verified: 2026-10-07 → 2026-10-17
+
+**Verification:** SPOT (line counts vs disk; dashboard section vs `dashboard/routes.js` and `dashboard/index.html`)
 
 ### 2026-10-07
 

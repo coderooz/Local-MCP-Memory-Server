@@ -41,6 +41,56 @@ export function getTableColumns(db, table) {
   return perDb.get(table);
 }
 
+/**
+ * Builds the document to insert when `updateOne(..., { upsert: true })` finds
+ * no matching row.
+ *
+ * Mongo-compatible semantics: equality fields from the filter are merged with
+ * the update's `$set`/plain values, and `$inc` starts from zero. Operator-based
+ * filter clauses cannot be represented as a single row, so they are skipped.
+ *
+ * @param {object} filter
+ * @param {object} update
+ * @param {Set<string>|null} tableColumns
+ * @returns {object}
+ */
+function buildUpsertDocument(filter = {}, update = {}, tableColumns = null) {
+  const document = {};
+
+  const assign = (key, value) => {
+    if (value === undefined) return;
+    if (tableColumns && !tableColumns.has(key)) return;
+    document[key] = value;
+  };
+
+  for (const [key, value] of Object.entries(filter)) {
+    if (key.startsWith('$')) continue;
+    const type = typeof value;
+    if (value === null || type === 'string' || type === 'number' || type === 'boolean') {
+      assign(key, value);
+    }
+  }
+
+  if (update && typeof update === 'object') {
+    for (const [key, value] of Object.entries(update)) {
+      if (key === '$set' && value && typeof value === 'object') {
+        for (const [field, fieldValue] of Object.entries(value)) {
+          assign(field, fieldValue);
+        }
+      } else if (key === '$inc' && value && typeof value === 'object') {
+        for (const [field, increment] of Object.entries(value)) {
+          const base = typeof document[field] === 'number' ? document[field] : 0;
+          assign(field, base + increment);
+        }
+      } else if (!key.startsWith('$')) {
+        assign(key, value);
+      }
+    }
+  }
+
+  return document;
+}
+
 class Cursor {
   constructor(db, tableName, filter) {
     this._db = db;
@@ -328,13 +378,43 @@ export class Collection {
 
     if (setClause) {
       const sql = `UPDATE "${this._table}" SET ${setClause} WHERE ${where}`;
-      const result = this._db.prepare(sql).run(...updateOps.setParams, ...filterParams);
+      let result = this._db.prepare(sql).run(...updateOps.setParams, ...filterParams);
+
+      if (result.changes === 0 && options.upsert === true) {
+        const insertDocument = buildUpsertDocument(
+          filter,
+          update,
+          getTableColumns(this._db, this._table)
+        );
+
+        try {
+          const inserted = await this.insertOne(insertDocument);
+          return {
+            acknowledged: true,
+            matchedCount: 0,
+            modifiedCount: 0,
+            upsertedCount: 1,
+            upsertedId: inserted.insertedId,
+          };
+        } catch (error) {
+          // A concurrent upsert may have inserted the row between UPDATE and INSERT.
+          if (!error || error.code !== 11000) {
+            throw error;
+          }
+          result = this._db.prepare(sql).run(...updateOps.setParams, ...filterParams);
+        }
+      }
+
       if (options.addOperations) {
         for (const op of options.addOperations) {
           await this._applyAddOperation(filter, op);
         }
       }
-      return { modifiedCount: result.changes, acknowledged: true };
+      return {
+        modifiedCount: result.changes,
+        matchedCount: result.changes,
+        acknowledged: true,
+      };
     }
 
     if (options.addOperations) {
@@ -343,7 +423,33 @@ export class Collection {
       }
     }
 
-    return { modifiedCount: 0, acknowledged: true };
+    if (options.upsert === true) {
+      const existing = await this.findOne(filter);
+      if (!existing) {
+        const insertDocument = buildUpsertDocument(
+          filter,
+          update,
+          getTableColumns(this._db, this._table)
+        );
+
+        try {
+          const inserted = await this.insertOne(insertDocument);
+          return {
+            acknowledged: true,
+            matchedCount: 0,
+            modifiedCount: 0,
+            upsertedCount: 1,
+            upsertedId: inserted.insertedId,
+          };
+        } catch (error) {
+          if (!error || error.code !== 11000) {
+            throw error;
+          }
+        }
+      }
+    }
+
+    return { modifiedCount: 0, matchedCount: 0, acknowledged: true };
   }
 
   async updateMany(filter, update, options = {}) {

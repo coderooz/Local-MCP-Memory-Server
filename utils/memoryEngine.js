@@ -121,9 +121,9 @@ export async function updateContextWithVersioning(
   db,
   contextId,
   updates,
-  { reason = 'Context updated', changedBy = 'system' } = {}
+  { reason = 'Context updated', changedBy = 'system', scopeFilter = {} } = {}
 ) {
-  const existing = await db.collection('contexts').findOne({ id: contextId });
+  const existing = await db.collection('contexts').findOne({ id: contextId, ...scopeFilter });
 
   if (!existing) {
     return null;
@@ -145,9 +145,11 @@ export async function updateContextWithVersioning(
     })
   );
 
-  await db.collection('contexts').updateOne({ id: contextId }, { $set: nextDocument });
+  await db
+    .collection('contexts')
+    .updateOne({ id: contextId, ...scopeFilter }, { $set: nextDocument });
 
-  return db.collection('contexts').findOne({ id: contextId });
+  return db.collection('contexts').findOne({ id: contextId, ...scopeFilter });
 }
 
 export async function evaluateMemoryState(
@@ -345,8 +347,8 @@ export async function detectAndResolveMemoryConflicts(db, context) {
   return conflicts.map((candidate) => candidate.id);
 }
 
-export async function getConnectedContextData(db, contextId) {
-  const context = await db.collection('contexts').findOne({ id: contextId });
+export async function getConnectedContextData(db, contextId, scopeFilter = {}) {
+  const context = await db.collection('contexts').findOne({ id: contextId, ...scopeFilter });
 
   if (!context) {
     return null;
@@ -362,19 +364,19 @@ export async function getConnectedContextData(db, contextId) {
       relatedContextIds.length
         ? db
             .collection('contexts')
-            .find({ id: { $in: relatedContextIds } })
+            .find({ id: { $in: relatedContextIds }, ...scopeFilter })
             .toArray()
         : [],
       (context.relatedTasks || []).length
         ? db
             .collection('tasks')
-            .find({ task_id: { $in: context.relatedTasks } })
+            .find({ task_id: { $in: context.relatedTasks }, ...scopeFilter })
             .toArray()
         : [],
       (context.relatedIssues || []).length
         ? db
             .collection('issues')
-            .find({ issue_id: { $in: context.relatedIssues } })
+            .find({ issue_id: { $in: context.relatedIssues }, ...scopeFilter })
             .toArray()
         : [],
       db
@@ -408,6 +410,7 @@ export async function getConnectedContextData(db, contextId) {
     ? await db
         .collection('agents')
         .find({
+          ...scopeFilter,
           $or: [{ agent_id: { $in: relatedAgentIds } }, { agent: { $in: relatedAgentIds } }],
         })
         .toArray()

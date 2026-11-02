@@ -2,17 +2,17 @@
 
 ## Phase 1 — Core Stability
 
-- Fix search_context bug (ids undefined)
-- Implement optimistic locking (version-based updates)
+- ~~Fix search_context bug (ids undefined)~~
+- ~~Implement optimistic locking (version-based updates)~~
 - Enforce strict project isolation in all queries
-- Fix agent heartbeat (agent_id undefined + lifecycle validation)
+- ~~Fix agent heartbeat (agent_id undefined + lifecycle validation)~~
 
 ## Phase 2 — Data Hardening
 
 - Add input validation (all endpoints)
-- Add idempotency + duplicate protection
-- Validate messaging targets (no silent success)
-- Add proper rate limiting
+- ~~Add idempotency + duplicate protection~~
+- ~~Validate messaging targets (no silent success)~~
+- ~~Add proper rate limiting~~
 
 ## Phase 3 — Architecture Cleanup
 
@@ -22,7 +22,7 @@
 
 ## Phase 4 — Features
 
-- Integrated knowledge database
+- ~~Integrated knowledge database~~
 - EXE distribution (no Node/Mongo dependency)
 - Browser extension for agent web actions
 - Issue tracking + auto-fix system

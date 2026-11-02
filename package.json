@@ -88,6 +88,12 @@
     "test:mcp-registry": "node tests/mcp-registry-test.js",
     "test:db": "node tests/database-integrity-test.js",
     "test:e2e": "node tests/app-e2e-test.js",
+    "test:isolation": "node tests/multi-project-isolation-test.js",
+    "test:contract": "node tests/isolation-contract-test.js",
+    "test:gaps": "node tests/isolation-gap-detectors-test.js",
+    "test:execution:policy": "node tests/execution-policy-test.js",
+    "test:execution:integration": "node tests/execution-integration-test.js",
+    "test:execution": "npm run test:execution:policy && npm run test:execution:integration",
     "test:chaos:resilience": "node tests/mcp-chaos-resilience-test.js",
     "chaos:test": "node scripts/chaos-test.js"
   },

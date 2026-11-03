@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/coderooz-local-mcp-memory-server-badge.png)](https://mseep.ai/app/coderooz-local-mcp-memory-server)
+
 # Local MCP Memory Server
 
 ![GitHub stars](https://img.shields.io/github/stars/coderooz/Local-MCP-Memory-Server)

@@ -8,7 +8,7 @@ We welcome contributions from developers and AI agents alike. This document outl
 
 ## 1. Development Prerequisites
 
-- **Node.js:** `>=20.0.0` (LTS recommended, tested on Node 20 and Node 24).
+- **Node.js:** `>=22.0.0` (Active LTS recommended, tested on Node 22 and Node 24).
 - **npm:** `>=9.0.0`.
 - **Git:** Standard git client.
 - **Operating System:** Cross-platform (Windows, macOS, Linux).

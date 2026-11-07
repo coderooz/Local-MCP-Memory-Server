@@ -16,7 +16,7 @@ import { getInstallState, listAgentStatus } from './install-state.js';
 import { listRunningServers } from './api-client.js';
 import { getPackageInfo, PACKAGE_ROOT } from './package-info.js';
 
-const MIN_NODE_MAJOR = 20;
+const MIN_NODE_MAJOR = 22;
 
 function check(id, label, status, detail) {
   return { id, label, status, detail };

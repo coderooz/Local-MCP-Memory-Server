@@ -72,7 +72,7 @@
     "email": "contact@coderooz.in"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "start": "node mcp-server.js",

@@ -48,7 +48,7 @@ local-mcp-memory init
 ```
 
 The `init` command automatically:
-1. Detects your operating system and Node.js environment (`>=20.0.0`).
+1. Detects your operating system and Node.js environment (`>=22.0.0`).
 2. Creates the per-user application directory (`~/.local-mcp-memory` or `%LOCALAPPDATA%\local-mcp-memory`) and initializes the SQLite database (`mcp-memory.db`).
 3. Auto-generates persistent security secrets (`MCP_MASTER_SECRET` and JWT signing secret).
 4. Auto-detects and configures **all 8 supported AI coding agents**:

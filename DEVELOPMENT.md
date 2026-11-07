@@ -209,7 +209,7 @@ local-mcp-memory/
 
 ### Required Runtime Versions
 
-- **Node.js:** >=20.0.0 (check `.nvmrc` for exact version)
+- **Node.js:** >=22.0.0 (check `.nvmrc` for exact version)
 - **Database:** embedded SQLite via `better-sqlite3` (no external install)
 - **npm:** 9+ (comes with Node.js)
 

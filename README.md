@@ -47,6 +47,13 @@ npm install -g local-mcp-memory
 local-mcp-memory init
 ```
 
+> **Installation Source Note**:
+> - **npm Registry**: `npm install -g local-mcp-memory`
+> - **GitHub Release (Direct)**: You can also install directly from the tagged GitHub release via:
+>   ```bash
+>   npm install -g https://github.com/coderooz/Local-MCP-Memory-Server.git#v2.6.1
+>   ```
+
 The `init` command automatically:
 1. Detects your operating system and Node.js environment (`>=22.0.0`).
 2. Creates the per-user application directory (`~/.local-mcp-memory` or `%LOCALAPPDATA%\local-mcp-memory`) and initializes the SQLite database (`mcp-memory.db`).

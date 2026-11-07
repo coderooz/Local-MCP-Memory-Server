@@ -1,15 +1,17 @@
-# Current State — local-mcp-memory v2.6.1 (Release Verification & Issue Closure)
+# Current State — local-mcp-memory v2.6.1 (Campaign 12 Audit Complete)
 
 **Status Date:** 2026-11-07  
-**Current Milestone:** Campaign 11 — Final v2.6.1 Release Verification, GitHub Issue Closure & Workflow Remediation  
+**Current Milestone:** Campaign 12 — npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification  
 **Development Version:** `2.6.1` (Authoritative SSOT)  
 **Node.js Engine:** `>=22.0.0` (Active LTS)  
-**Release Status:** `APPROVED WITH CONDITIONS — RELEASE EXISTS, LIMITED FOLLOW-UP REMAINS`  
+**Release Status:** `PUBLICATION FAILED — BLOCKER IDENTIFIED` (Token lacks Bypass 2FA; package artifact 100% verified)  
 
-## 1. Readiness & Closure Summary
-- **GitHub Release Live**: `v2.6.1` is live at `https://github.com/coderooz/Local-MCP-Memory-Server/releases/tag/v2.6.1` linked to git tag `v2.6.1` (commit `d79c15d`).
-- **CI Status**: 100% Green on GitHub Actions run ID `42348001909` (Security, Lint, Isolation, Tests, Syntax, Packaging). Pinned to `ubuntu-24.04` and `node-version: 22.x`.
-- **Test Pass Rate**: 100% (67 test suites, 196 test cases, 90 static checks = 353 distinct checks passing).
-- **GitHub Issue & Milestone Reconciliation**: 28 verified issues closed with file and test evidence. Milestones 8, 10, and 11 closed at 100% completion.
-- **npm Public Registry State**: Package currently unpublished on npmjs.org (HTTP 404) due to account write 2FA `EOTP`. Workflow `publish-npm.yml` is remediated with OTP input and ready for execution upon user updating the `NPM_TOKEN` repository secret with an Automation token.
-- **Security & Zero-Trust**: Exposed token treated as compromised; rotation instructions documented in Report 02. Protected v2.5.0 instance (`C:\Code_Works\HTML_CSS_JS\workProjects\website\local-mcp-memory`) and production MongoDB remain 100% untouched.
+## 1. Readiness & Publication Summary
+- **GitHub Release Live**: `v2.6.1` is live at `https://github.com/coderooz/Local-MCP-Memory-Server/releases/tag/v2.6.1` linked to git tag `v2.6.1` (commit `6921592`).
+- **CI & Publication Workflow Status**:
+  - CI run #42348001909 is 100% green across all 6 jobs.
+  - Publish run #42377486532: Authenticated as `coderooz` via `npm whoami`, passed all 6 pre-publish checks, and failed at `npm publish` due to `npm error code EOTP` (account write 2FA requires OTP).
+- **Package Tarball Verification**: 100% clean-room test pass via `scripts/verify-disposable-package-install.mjs` (127 files, 63 tools, store/search context round-trip).
+- **Authentication Findings**: Token in GitHub secret `NPM_TOKEN` is authentic for user `coderooz`, but lacks the **"Bypass two-factor authentication (2FA) for publish actions"** setting on npmjs.com.
+- **Trusted Publishing (OIDC)**: Assessment completed in Report 08. Recommended as the long-term solution for v2.7+.
+- **Protected Instances**: Stable v2.5.0 instance (`C:\Code_Works\HTML_CSS_JS\workProjects\website\local-mcp-memory`) and production MongoDB remain 100% untouched.

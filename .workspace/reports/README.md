@@ -16,6 +16,16 @@ This index serves as the centralized catalog and historical log of all engineeri
 .workspace/reports/
 ├── README.md                          <-- (This master index & log)
 ├── INDEX.md                           <-- (Quick navigation pointer)
+├── NPM-Publication-v2.6.1/            <-- npm v2.6.1 Publication & Audit (Nov 07, 2026 - Campaign 12)
+│   ├── 01_RELEASE_AND_TAG_RECONCILIATION.md
+│   ├── 02_NPM_CREDENTIAL_AND_AUTHENTICATION_AUDIT.md
+│   ├── 03_PUBLISH_WORKFLOW_SECURITY_AUDIT.md
+│   ├── 04_PACKAGE_ARTIFACT_VERIFICATION.md
+│   ├── 05_PRE_PUBLICATION_GATE.md
+│   ├── 06_PUBLICATION_EXECUTION_RECORD.md
+│   ├── 07_PUBLIC_REGISTRY_VERIFICATION.md
+│   ├── 08_TRUSTED_PUBLISHING_MIGRATION_ASSESSMENT.md
+│   └── 09_FINAL_PUBLICATION_VERDICT.md
 ├── Post-Release-Closure-v2.6.1/       <-- Final Release Verification & Closure (Nov 07, 2026 - Campaign 11)
 │   ├── 01_RELEASE_STATE_AND_REGISTRY_VERIFICATION.md
 │   ├── 02_NPM_CREDENTIAL_ROTATION_STATUS.md

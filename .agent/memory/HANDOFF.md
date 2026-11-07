@@ -1,19 +1,16 @@
 # Current Agent Handoff State
 
-- **Current Status:** Campaign 11 Completed — Final v2.6.1 Release Verification, GitHub Issue Closure & Workflow Remediation.
+- **Current Status:** Campaign 12 Completed — npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification.
 - **Active Agent:** Google Antigravity.
 - **Current Version:** `2.6.1` (Authoritative SSOT).
 - **Node.js Engine:** `>=22.0.0` (Active LTS).
-- **Current Release Status:** `APPROVED WITH CONDITIONS — RELEASE EXISTS, LIMITED FOLLOW-UP REMAINS`.
-- **Delivered in Campaign 11:**
-  - Modernized project to Node 22 LTS (Active).
-  - Pinned CI runner matrix to `ubuntu-24.04` and `node-version: 22.x` (100% Green on run `42348001909`).
-  - GitHub Release `v2.6.1` verified live on GitHub.
-  - Closed 28 verified GitHub issues with evidence comments.
-  - Formally closed Milestones 8, 10, and 11.
-  - Added OTP input and Automation token support to `publish-npm.yml`.
-  - Authored 12 closure audit reports in `.workspace/reports/Post-Release-Closure-v2.6.1/`.
+- **Current Release Status:** `PUBLICATION FAILED — BLOCKER IDENTIFIED`.
+- **Delivered in Campaign 12:**
+  - Full tag, release, and commit reconciliation (`v2.6.1` intact).
+  - Hardened `.github/workflows/publish-npm.yml` with version guard, duplicate protection, and provenance.
+  - Executed publish run #42377486532; confirmed token authenticates as `coderooz`.
+  - Discovered and diagnosed `EOTP` blocker: token requires 2FA bypass flag.
+  - Authored 9 reports in `.workspace/reports/NPM-Publication-v2.6.1/`.
+  - Evaluated 77 remaining GitHub issues and produced v2.7+ roadmap.
 - **Immediate Next Operational Step (for User):**
-  - Rotate exposed npm token to an Automation Token on [npmjs.com](https://www.npmjs.com/).
-  - Update GitHub Actions secret `NPM_TOKEN`.
-  - Dispatch `publish-npm.yml` to publish `local-mcp-memory@2.6.1` to npm registry.
+  - Enable "Bypass 2FA for publish actions" on npmjs.com token (or create Classic Automation token) and update `NPM_TOKEN`, OR manually trigger `publish-npm.yml` providing current 6-digit OTP code.

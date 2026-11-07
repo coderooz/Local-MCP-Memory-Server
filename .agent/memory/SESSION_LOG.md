@@ -85,3 +85,18 @@
   - Authored 12 closure reports in `.workspace/reports/Post-Release-Closure-v2.6.1/` (Reports 01 to 12).
   - Synchronized `.workspace/INDEX.md`, `.workspace/reports/INDEX.md`, `.workspace/reports/README.md`, `.agent/context/CURRENT_STATE.md`, `.agent/context/ACTIVE_WORK.md`, `.agent/memory/HANDOFF.md`.
   - Maintained zero modifications to protected v2.5.0 workspace and production MongoDB.
+
+
+## 2026-11-07 — Campaign 12: npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification
+- **Agent:** Google Antigravity
+- **Actions:**
+  - Audited authoritative release state: Git tag `v2.6.1` is anchored to commit `6921592` and GitHub Release `v2.6.1` is live.
+  - Verified package artifact: 127 files, 309.7 kB compressed, clean-room disposable install passed 100% (63 tools, CLI, memory store/search).
+  - Hardened `.github/workflows/publish-npm.yml` in commit `df56f70`: added version guard (`2.6.1`), duplicate guard, `npm rebuild better-sqlite3`, non-disclosing `npm whoami`, and Sigstore provenance support.
+  - Evaluated pre-publication gates: 9/10 passed; Gate G8 encountered authentication configuration condition.
+  - Triggered publish workflow run #42377486532: authenticated as `coderooz` via `npm whoami`; pre-publish checks passed; publish failed with `npm error code EOTP` (account write 2FA requires OTP because Bypass 2FA was not enabled on token).
+  - Assessed npm Trusted Publishing (OIDC) migration architecture in Report 08.
+  - Authored 9 reports in `.workspace/reports/NPM-Publication-v2.6.1/` (Reports 01 to 09).
+  - Updated `README.md` to distinguish GitHub Release installation from npm registry installation.
+  - Updated master indexes and durable agent context (`.agent/`, `.workspace/`).
+  - Audited remaining 77 issues and produced v2.7+ engineering roadmap.

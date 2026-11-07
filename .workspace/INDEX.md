@@ -37,6 +37,7 @@
   - `Sprint-B-Documentation-Synchronization` (Campaign 10.3 — 14 reports)
   - `Final-Release-v2.6.1` (Campaign 10.4 — 14 reports)
   - `Post-Release-Closure-v2.6.1` (Campaign 11 — 12 reports)
+  - `NPM-Publication-v2.6.1` (Campaign 12 — 9 reports)
 
 ## 5. Indices
 - [Project Reference Index (PRI)](PRI/PROJECT_REFERENCE_INDEX.md)

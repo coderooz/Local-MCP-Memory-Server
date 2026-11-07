@@ -1,6 +1,7 @@
 # Local MCP Memory — Reports Index
 
 See [**`README.md`**](./README.md) for the complete chronological catalog, campaign logs, and direct links to all engineering audit reports across:
+- `NPM-Publication-v2.6.1/` (Campaign 12: npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification — 9 Reports)
 - `Post-Release-Closure-v2.6.1/` (Campaign 11: Final v2.6.1 Release Verification, GitHub Issue Closure & Workflow Remediation — 12 Reports)
 - `Final-Release-v2.6.1/` (Campaign 10.4: Final Release Engineering, Repository Governance & v2.6.1 Publication — 14 Reports)
 - `Sprint-B-Documentation-Synchronization/` (Campaign 10.3: Sprint B — Documentation Synchronization & Gap Remediation — 14 Reports)

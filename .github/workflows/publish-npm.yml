@@ -5,6 +5,10 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      otp:
+        description: 'NPM 2FA OTP Code (if 2FA is required)'
+        required: false
+        type: string
       tag:
         description: 'Tag or version to publish (defaults to package.json version)'
         required: false
@@ -44,6 +48,11 @@ jobs:
           npm pack --dry-run
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: |
+          if [ -n "${{ inputs.otp }}" ]; then
+            npm publish --access public --otp="${{ inputs.otp }}"
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

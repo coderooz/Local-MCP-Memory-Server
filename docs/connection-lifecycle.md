@@ -18,20 +18,24 @@ Multiple OpenCode terminals (nodes) could not connect to the same MCP server sim
 2. **PID validation too strict**: `process.kill(pid, 0)` fails for cross-parent PIDs
 3. **Validation blocked all**: Connection was rejected if PID validation failed, even when port was alive
 
-### The Fix (v2.5.2)
+### The Fix (v2.5.2 & v2.6.0)
 
 1. **Cache TTL**: Runtime now auto-refreshes after 500ms
 2. **Port-first validation**: Port liveness is checked BEFORE PID
-3. **PID optional**: If port is alive, PID validation failure doesn't block connection
+3. **PID optional for clients**: If port is alive, PID validation failure doesn't block client connection
+4. **Dynamic Port Range (v2.6.0)**: Port manager allocates in range `47000..47020` with `4000` backward compatibility
+5. **Port Congruence (v2.6.0)**: Server validates `portMatches` before reusing runtime files to prevent cross-port hijacking
+6. **Dead-PID Lock Recovery (v2.6.0)**: File lock acquisition detects crashed processes via `isValidPID` and clears stale locks immediately
+7. **Windows Process Liveness (v2.6.0)**: Handles Windows `EPERM` vs `ESRCH` so non-killable system processes aren't misclassified as dead
 
 ### Shared State
 
 All nodes share the same `.mcp-runtime.json` file:
 
 ```
-Node A (terminal 1) → MCP Server :4000
-Node B (terminal 2) → MCP Server :4000  (same server!)
-Node C (terminal 3) → MCP Server :4000  (same server!)
+Node A (terminal 1) → MCP Server :47000..47020 (or :4000)
+Node B (terminal 2) → MCP Server :47000..47020 (or :4000)  (same server!)
+Node C (terminal 3) → MCP Server :47000..47020 (or :4000)  (same server!)
 ```
 
 ### Connection Model
@@ -193,17 +197,20 @@ On shutdown:
 
 ## Port Discovery Fallback
 
-Default fallback ports in order:
+Dynamic range and fallback ports in order:
 
 ```js
-[3000, 4000, 5000, 8080, 8888];
+// Dynamic range: 47000..47020
+// Default fallback ports:
+[4000, 47000, 47001, 47002, 3000, 5000, 8080, 8888];
 ```
 
 Discovery logic:
 
-1. Try cached runtime port (if valid)
-2. Scan fallback ports for available
-3. Return first available or null
+1. Try cached runtime port from `.mcp-runtime.json` (if valid and portMatches is true)
+2. Scan dynamic port range (`47000..47020`) and fallback ports for available port
+3. Clean up any dead PID file locks encountered during startup
+4. Return first available port or bind dynamically
 
 ---
 

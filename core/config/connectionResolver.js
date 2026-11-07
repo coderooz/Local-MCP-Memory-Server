@@ -7,7 +7,8 @@ import {
   invalidateRuntime,
   validateRuntime,
   recoverRuntimeFromActiveServers,
-  resolveProjectContext
+  resolveProjectContext,
+  isValidPID
 } from '../config/runtime-state.js';
 import { getPortManager, PortManager } from '../config/portManager.js';
 import { getConfigValue } from '../config/project-config-loader.js';
@@ -157,7 +158,16 @@ export class ConnectionResolver {
     });
 
     if (!validation.valid) {
-      await this._runtimeProvider.deleteRuntime();
+      let shouldDelete = true;
+      if (validation.reason === 'project_mismatch' && runtime?.pid) {
+        const isAlive = await isValidPID(runtime.pid);
+        if (isAlive) {
+          shouldDelete = false;
+        }
+      }
+      if (shouldDelete) {
+        await this._runtimeProvider.deleteRuntime();
+      }
       return {
         success: false,
         state: this._state,
@@ -197,7 +207,16 @@ export class ConnectionResolver {
     });
 
     if (!validation.valid) {
-      await this._runtimeProvider.deleteRuntime();
+      let shouldDelete = true;
+      if (validation.reason === 'project_mismatch' && runtime?.pid) {
+        const isAlive = await isValidPID(runtime.pid);
+        if (isAlive) {
+          shouldDelete = false;
+        }
+      }
+      if (shouldDelete) {
+        await this._runtimeProvider.deleteRuntime();
+      }
       return {
         success: false,
         state: this._state,

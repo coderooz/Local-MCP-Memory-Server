@@ -2,7 +2,7 @@
 
 **Project:** local-mcp-memory
 **Version:** 2.6.0
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-11-05
 
 ---
 
@@ -663,7 +663,132 @@
 
 ---
 
+## Concurrency & File Lock Errors
+
+### E-LOCK-001: Stale File Lock Contention / Dead PID Detection
+
+**Trigger:** A prior crashed process left an unreleased lock file (`.lock`) in the runtime directory.
+
+**Error Type:** `Failed to acquire lock` timeout or deadlock.
+
+**Handling Mechanism:**
+
+- `acquireFileLock` in `core/config/runtime-state.js` reads lock JSON payload.
+- Tests whether lock owner PID is alive using `!(await isValidPID(lockData.pid))`.
+- On Windows and POSIX, distinguishes dead processes (`ESRCH`) from active non-owned processes (`EPERM`).
+
+**Recovery Path:**
+
+1. If process is confirmed dead (`ESRCH`), immediately unlinks orphaned lock file via `fs.unlinkSync()`.
+2. Automatically acquires lock for current process without waiting for 30s expiry.
+3. Resumes execution safely without deadlocking.
+
+**User-Facing Behavior:**
+
+- Transparent auto-recovery; server boots without manual lock file cleanup.
+
+**Logging:** Stale lock cleanup logged to stderr diagnostics.
+
+---
+
+## Networking & Port Errors
+
+### E-PORT-002: Port Congruence & Cross-Port Hijacking Prevention
+
+**Trigger:** An existing `.mcp-runtime.json` exists on disk pointing to port `X` (e.g. 47005), but a new server invocation explicitly requested port `Y` (e.g. 3799 for test isolation).
+
+**Error Type:** Unintended port reuse / cross-session collision.
+
+**Handling Mechanism:**
+
+- `server.js` verifies `portMatches(existingRuntime.port, requestedPort)` before reusing existing runtime file.
+- Checks if requested port matches existing runtime port.
+
+**Recovery Path:**
+
+1. If ports do not match, skips runtime file reuse.
+2. Dynamically allocates or binds requested port `Y`.
+3. Overwrites runtime state file with active port and current PID.
+4. Announces bound port on stderr: `running on port <Y>`.
+
+**User-Facing Behavior:**
+
+- Distinct tests and servers run independently without hijacking each other's ports.
+
+**Logging:** Port binding announcement emitted on stderr.
+
+---
+
+## CLI & Agent Setup Errors
+
+### E-CLI-001: Agent Configuration Syntax or AST Parse Failure
+
+**Trigger:** User's existing agent configuration file (`opencode.json`, `config.toml`, `mcp.json`) has syntax errors or unsupported format.
+
+**Error Type:** Configuration parse error.
+
+**Handling Mechanism:**
+
+- `src/core/setup/jsonc.js` parses file using lenient comment-preserving JSONC AST parser.
+- Creates backup copy (`.bak`) before any write attempt.
+- Supports `--dry-run` to preview edits safely.
+
+**Recovery Path:**
+
+1. If parsing fails, preserves original configuration file completely untouched.
+2. Emits clear syntax error message naming file path and line error.
+3. If write fails midway, restores from `.bak` backup.
+
+**User-Facing Behavior:**
+
+- Original agent config is never corrupted; user is notified of specific malformed JSON/TOML lines.
+
+**Logging:** Error logged to CLI console.
+
+---
+
+## Migration Errors
+
+### E-MIG-001: MongoDB to SQLite Migration Failure
+
+**Trigger:** Connection drop, invalid MongoDB URI, or data type mismatch during `local-mcp-memory migrate`.
+
+**Error Type:** Database migration error.
+
+**Handling Mechanism:**
+
+- `src/core/migration/mongo-to-sqlite.js` executes batch inserts inside SQLite transactions.
+- Source MongoDB is accessed with read-only operations.
+
+**Recovery Path:**
+
+1. Aborts batch and issues SQLite transaction `ROLLBACK`.
+2. Leaves source MongoDB database completely unaltered.
+3. Emits error report specifying failed collection and record ID.
+
+**User-Facing Behavior:**
+
+- Clear migration failure summary with instructions to fix connection URI or clean source data.
+
+**Logging:** Error details emitted to CLI stderr.
+
+---
+
 ## Reference Maintenance Log
+
+### 2026-11-05
+
+**Change:** Added Concurrency, Port Congruence, Agent Setup, and Migration Error Paths
+
+**Classification:** ADDED
+
+**Updated:**
+- Added `E-LOCK-001`: Stale File Lock Contention / Dead PID Detection
+- Added `E-PORT-002`: Port Congruence & Cross-Port Hijacking Prevention
+- Added `E-CLI-001`: Agent Configuration Syntax or AST Parse Failure
+- Added `E-MIG-001`: MongoDB to SQLite Migration Failure
+
+**Verification:** FULL (verified with `npm test` and `npm run test:resilience`)
 
 ### 2026-10-07
 

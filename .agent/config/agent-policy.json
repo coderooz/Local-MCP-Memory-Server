@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policyName": "local-mcp-memory-agent-policy",
+  "version": "2.6.0",
+  "enforcementLevel": "strict",
+  "general": {
+    "moduleSystem": "ESM",
+    "requireExplicitExtensions": true,
+    "disallowedPackages": [
+      "mongoose",
+      "ts-node"
+    ],
+    "allowedDatabases": [
+      "better-sqlite3",
+      "mongodb-native-readonly-migration"
+    ]
+  },
+  "safety": {
+    "protectStableInstance": true,
+    "stableInstancePath": "C:\\\\Code_Works\\\\HTML_CSS_JS\\\\workProjects\\\\website\\\\local-mcp-memory",
+    "protectMongoProduction": true,
+    "requireDryRunBeforeMigration": true,
+    "disallowDestructiveGit": true
+  },
+  "runtime": {
+    "defaultTimeoutMs": 30000,
+    "maxPayloadSizeBytes": 10485760,
+    "walMode": true
+  }
+}

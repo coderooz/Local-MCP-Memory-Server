@@ -1,0 +1,275 @@
+{
+  "ok": true,
+  "mode": "dry-run",
+  "migrationVersion": 1,
+  "startedAt": "2026-11-06T15:15:41.396Z",
+  "finishedAt": "2026-11-06T15:15:43.244Z",
+  "durationMs": 1848,
+  "source": {
+    "uri": "mongodb://127.0.0.1:27017/mcp_memory",
+    "database": "mcp_memory",
+    "collections": 16
+  },
+  "destination": {
+    "dbPath": "C:\\Users\\ranit\\AppData\\Local\\local-mcp-memory\\mcp-memory.db",
+    "existedBefore": true,
+    "sizeBefore": 913408,
+    "sizeAfter": 913408
+  },
+  "options": {
+    "apply": false,
+    "resume": false,
+    "onDuplicate": "error",
+    "orphans": "error"
+  },
+  "collections": [
+    {
+      "name": "contexts",
+      "table": "contexts",
+      "sourceCount": 2618,
+      "read": 2618,
+      "wouldInsert": 2618,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "score"
+      ]
+    },
+    {
+      "name": "memory_versions",
+      "table": "memory_versions",
+      "sourceCount": 7158,
+      "read": 7158,
+      "wouldInsert": 7158,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "actions",
+      "table": "actions",
+      "sourceCount": 151,
+      "read": 151,
+      "wouldInsert": 151,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "sessions",
+      "table": "sessions",
+      "sourceCount": 48,
+      "read": 48,
+      "wouldInsert": 48,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "agents",
+      "table": "agents",
+      "sourceCount": 208,
+      "read": 208,
+      "wouldInsert": 208,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [
+        "62245e58-cce6-4780-b9ba-151ce0dd7016: query operator in \"agent_id\" coerced to empty",
+        "62245e58-cce6-4780-b9ba-151ce0dd7016: query operator in \"agent\" coerced to empty"
+      ],
+      "unmappedFields": [
+        "accessCount",
+        "importance",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "tasks",
+      "table": "tasks",
+      "sourceCount": 789,
+      "read": 789,
+      "wouldInsert": 789,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "messages",
+      "table": "messages",
+      "sourceCount": 276,
+      "read": 276,
+      "wouldInsert": 276,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "issues",
+      "table": "issues",
+      "sourceCount": 28,
+      "read": 28,
+      "wouldInsert": 28,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "project_map",
+      "table": "project_map",
+      "sourceCount": 275,
+      "read": 275,
+      "wouldInsert": 275,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "activity",
+      "table": "activity",
+      "sourceCount": 8166,
+      "read": 8166,
+      "wouldInsert": 8166,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "resource_locks",
+      "table": "resource_locks",
+      "sourceCount": 32,
+      "read": 32,
+      "wouldInsert": 32,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "accessCount",
+        "importance",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "metrics",
+      "table": "metrics",
+      "sourceCount": 4996,
+      "read": 4996,
+      "wouldInsert": 4996,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": [
+        "importance",
+        "accessCount",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "feedbacks",
+      "table": "feedbacks",
+      "sourceCount": 57,
+      "read": 57,
+      "wouldInsert": 57,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": []
+    },
+    {
+      "name": "chat_rooms",
+      "table": "chat_rooms",
+      "sourceCount": 12,
+      "read": 12,
+      "wouldInsert": 12,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": []
+    },
+    {
+      "name": "chat_messages",
+      "table": "chat_messages",
+      "sourceCount": 100,
+      "read": 100,
+      "wouldInsert": 100,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": []
+    },
+    {
+      "name": "logs",
+      "table": "logs",
+      "sourceCount": 4917,
+      "read": 4917,
+      "wouldInsert": 4917,
+      "wouldSkip": 0,
+      "duplicates": 0,
+      "warnings": [],
+      "unmappedFields": []
+    }
+  ],
+  "checks": {
+    "duplicateIdentifiers": 0,
+    "orphanReferences": 0,
+    "orphanSample": []
+  },
+  "backup": null,
+  "snapshot": null,
+  "error": null,
+  "reportFiles": [],
+  "absentCollections": [
+    "emulators",
+    "connections",
+    "mcp_servers",
+    "execution_jobs",
+    "execution_approvals"
+  ],
+  "totals": {
+    "sourceDocuments": 29831,
+    "read": 29831,
+    "written": 29831,
+    "skipped": 0,
+    "warnings": 2
+  }
+}

@@ -1,26 +1,21 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getDbPath as resolveAppDbPath } from '../../paths/index.js';
 
 let db = null;
 let dbPath = null;
 
+/**
+ * Resolve the SQLite file path.
+ *
+ * Defaults to the per-user application data directory (see
+ * `src/core/paths/index.js`), never the package directory or the cwd.
+ * `MCP_DB_PATH` still overrides the location.
+ */
 export function getDbPath() {
   if (dbPath) return dbPath;
-  const customPath = process.env.MCP_DB_PATH;
-  if (customPath) {
-    dbPath = path.resolve(customPath);
-  } else {
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    dbPath = path.join(dataDir, 'mcp-memory.db');
-  }
+  dbPath = resolveAppDbPath();
   return dbPath;
 }
 

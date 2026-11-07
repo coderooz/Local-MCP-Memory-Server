@@ -381,7 +381,12 @@ export class MemoryQueryBuilder {
     }
 
     if (query?.trim()) {
-      filters.push({ $text: { $search: query.trim() } });
+      const trimmed = query.trim();
+      const searchQuery = trimmed
+        .split(/\s+/)
+        .map((w) => (w.includes('-') && !w.startsWith('"') ? `"${w}"` : w))
+        .join(' ');
+      filters.push({ $text: { $search: searchQuery } });
     }
 
     if (lifecycle) {

@@ -3,8 +3,6 @@
 import readline from 'readline';
 import path from 'path';
 import util from 'util';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 
 import { startMemoryServer } from './startMemoryServer.js';
 import { GLOBAL_AGENT_INSTRUCTION } from './agent-instruction.js';
@@ -37,14 +35,14 @@ import {
 } from './src/core/mcp-registry/index.js';
 import { isFeatureEnabled } from './core/config/project-config-loader.js';
 import { getConnectionResolver, RECOVERY_STRATEGY } from './core/config/connectionResolver.js';
+import { getPackageInfo } from './src/core/cli/package-info.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { loadEnvironment } from './src/core/config/load-env.js';
 
-dotenv.config({
-  path: path.join(__dirname, '.env'),
-  quiet: true,
-});
+const envResult = loadEnvironment();
+for (const issue of envResult.issues) {
+  process.stderr.write(`[MCP Config] [WARN] ${issue}\n`);
+}
 
 console.log = (...args) => {
   process.stderr.write(`${util.format(...args)}\n`);
@@ -1826,7 +1824,7 @@ rl.on('line', (line) => {
           },
           serverInfo: {
             name: 'mcp-memory-server',
-            version: '2.6.0',
+            version: getPackageInfo().version,
             description: 'Persistent multi-agent memory system for AI agents',
             author: 'Ranit Saha (Coderooz)',
           },

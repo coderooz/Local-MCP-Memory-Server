@@ -1,11 +1,6 @@
-name: Auto Tag on Version Change
+name: Create Release Tag
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'package.json'
   workflow_dispatch:
     inputs:
       mode:
@@ -32,7 +27,7 @@ permissions:
 jobs:
   check-and-tag:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     
     steps:
       - name: Checkout
@@ -40,6 +35,20 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run verification checks
+        run: |
+          npm run check
+          npm test
 
       - name: Get version info
         id: version_info
@@ -51,7 +60,7 @@ jobs:
             NEW_VERSION="${{ inputs.version }}"
             echo "Using explicitly provided version: $NEW_VERSION"
           else
-            NEW_VERSION=$(node -p "require('./package.json').version")
+            NEW_VERSION=$(node --input-type=module -e "import fs from 'node:fs'; console.log(JSON.parse(fs.readFileSync('./package.json', 'utf8')).version);")
             echo "Using package.json version: $NEW_VERSION"
           fi
           
@@ -111,7 +120,7 @@ jobs:
           
           if [[ "${{ steps.tag_check.outputs.tag_exists }}" == "true" ]]; then
             echo "::notice::Skipping - tag $TAG_NAME already exists"
-            echo "::set-output name=created::false"
+            echo "created=false" >> $GITHUB_OUTPUT
             echo "SKIP_REASON=tag_exists"
           else
             echo "Creating tag $TAG_NAME..."
@@ -120,7 +129,7 @@ jobs:
             git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
             git push origin "$TAG_NAME"
             echo "::notice::Successfully created and pushed tag $TAG_NAME"
-            echo "::set-output name=created::true"
+            echo "created=true" >> $GITHUB_OUTPUT
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

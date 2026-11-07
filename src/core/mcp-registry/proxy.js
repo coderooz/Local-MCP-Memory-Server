@@ -22,7 +22,7 @@ export const TIMEOUTS = Object.freeze({
   health: 5000,
   toolCall: 10000,
   discovery: 15000,
-  default: 10000,
+  default: 10000
 });
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ export const TIMEOUTS = Object.freeze({
 export const BREAKER_DEFAULTS = Object.freeze({
   failureThreshold: 5, // consecutive failures before opening
   coolOffMs: 30000, // how long the breaker stays open before probing
-  halfOpenMaxCalls: 1, // probe requests allowed while half-open
+  halfOpenMaxCalls: 1 // probe requests allowed while half-open
 });
 
 let breakerConfig = { ...BREAKER_DEFAULTS };
@@ -78,7 +78,7 @@ export function getCircuitState(serverId) {
       open: true,
       state: 'open',
       retryAfterMs: Math.max(0, breakerConfig.coolOffMs - elapsed),
-      lastError: entry.lastError,
+      lastError: entry.lastError
     };
   }
 
@@ -156,7 +156,10 @@ export function scrubSecrets(message) {
 export function buildHeaders(server) {
   const headers = {
     'Content-Type': 'application/json',
-    Accept: 'application/json',
+    // Streamable HTTP servers may answer with either a JSON body or an SSE
+    // stream; a client that only advertises JSON is rejected by spec-compliant
+    // servers.
+    Accept: 'application/json, text/event-stream'
   };
 
   if (server.auth_type && server.auth_type !== 'none' && server.auth_config) {
@@ -188,12 +191,59 @@ export function buildHeaders(server) {
   return headers;
 }
 
+/**
+ * Claim a circuit slot for one request.
+ *
+ * Throws immediately (code `CIRCUIT_OPEN`) when the breaker is open. Returns
+ * `{ success, failure, release }`; callers must invoke exactly one of
+ * `success`/`failure` and always call `release()` in a `finally`.
+ */
+export function guardCircuit(serverId) {
+  const circuit = getCircuitState(serverId);
+  if (circuit.open) {
+    throw createCircuitOpenError(serverId, circuit.retryAfterMs);
+  }
+
+  const entry = getEntry(serverId);
+  const wasHalfOpen = entry.state === 'half-open';
+  if (wasHalfOpen) entry.probesInFlight += 1;
+
+  let settled = false;
+
+  return {
+    success() {
+      if (settled) return;
+      settled = true;
+      recordSuccess(serverId);
+    },
+    failure(error) {
+      if (settled) return;
+      settled = true;
+      const failure = error?.name === 'AbortError' ? new Error('Request aborted') : error;
+      if (failure && typeof failure.message === 'string') {
+        failure.message = scrubSecrets(failure.message);
+      }
+      recordFailure(serverId, failure);
+    },
+    release() {
+      if (!wasHalfOpen) return;
+      const current = breakers.get(serverId);
+      if (current) current.probesInFlight = Math.max(0, current.probesInFlight - 1);
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // JSON-RPC request with breaker + timeout policy
 // ---------------------------------------------------------------------------
 
 /**
- * Send a JSON-RPC request to an MCP server.
+ * Send a single stateless JSON-RPC request to an MCP server.
+ *
+ * This is the low-level transport primitive: it does not perform the MCP
+ * `initialize` handshake. Use `./session.js` for spec-compliant calls; this
+ * function remains for simple endpoints and for tests that exercise the
+ * breaker and timeout policy directly.
  *
  * @param {object} server - RAW server record (getServerRaw) — never masked
  * @param {object} jsonRpcBody - { method, params } (id/jsonrpc added automatically)
@@ -207,18 +257,10 @@ export async function proxyRequest(server, jsonRpcBody, timeoutMs = TIMEOUTS.def
   const url = server.url;
   if (!url) throw new Error('Server URL not configured');
 
-  const circuit = getCircuitState(serverId);
-  if (circuit.open) {
-    throw createCircuitOpenError(serverId, circuit.retryAfterMs);
-  }
-
+  const guard = guardCircuit(serverId);
   const headers = buildHeaders(server);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  const entry = breakers.get(serverId);
-  const wasHalfOpen = entry?.state === 'half-open';
-  if (wasHalfOpen) entry.probesInFlight += 1;
 
   try {
     const response = await fetch(url, {
@@ -227,9 +269,9 @@ export async function proxyRequest(server, jsonRpcBody, timeoutMs = TIMEOUTS.def
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: Date.now(),
-        ...jsonRpcBody,
+        ...jsonRpcBody
       }),
-      signal: controller.signal,
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -237,21 +279,17 @@ export async function proxyRequest(server, jsonRpcBody, timeoutMs = TIMEOUTS.def
     }
 
     const data = await response.json();
-    recordSuccess(serverId);
+    guard.success();
     return data;
   } catch (err) {
     if (err.code === 'CIRCUIT_OPEN') throw err;
 
     const failure =
       err.name === 'AbortError' ? new Error(`Request timed out after ${timeoutMs}ms`) : err;
-    failure.message = scrubSecrets(failure.message);
-    recordFailure(serverId, failure);
+    guard.failure(failure);
     throw failure;
   } finally {
     clearTimeout(timer);
-    if (wasHalfOpen) {
-      const current = breakers.get(serverId);
-      if (current) current.probesInFlight = Math.max(0, current.probesInFlight - 1);
-    }
+    guard.release();
   }
 }

@@ -21,6 +21,7 @@ import {
   callProxiedTool,
 } from '../src/core/mcp-registry/index.js';
 import { handleMCPRegistryTool, getMCPRegistryTools } from '../tools/mcpRegistryTools.js';
+import { startMcpStub } from './fixtures/mcp-http-stub.js';
 import {
   proxyRequest,
   getCircuitState,
@@ -223,40 +224,16 @@ async function runTests() {
 
   // Test 12 [G1 regression]: proxyToolCall must send REAL credentials upstream
   await test('proxyToolCall sends real (unmasked) bearer token upstream [G1]', async () => {
-    const http = await import('node:http');
-    let receivedAuth = null;
-
-    const mock = http.createServer((req, res) => {
-      let body = '';
-      req.on('data', (chunk) => (body += chunk));
-      req.on('end', () => {
-        receivedAuth = req.headers['authorization'] || null;
-        let rpc = {};
-        try {
-          rpc = JSON.parse(body);
-        } catch {
-          /* ignore */
-        }
-        res.setHeader('Content-Type', 'application/json');
-        res.end(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: rpc.id || 1,
-            result: { content: [{ type: 'text', text: 'ok' }] },
-          })
-        );
-      });
-    });
-
-    await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve));
-    const port = mock.address().port;
+    // Conformant Streamable HTTP server: requires the MCP handshake, so this
+    // also proves the proxy speaks the real protocol and not bare JSON-RPC.
+    const stub = await startMcpStub({ requireAuth: 'Bearer real-token-abc123' });
 
     try {
       const reg = await registerServer({
         project: 'test-project',
         name: 'Bearer Mock Server',
         type: 'http',
-        url: `http://127.0.0.1:${port}`,
+        url: stub.url,
         auth_type: 'bearer',
         auth_config: { token: 'real-token-abc123' },
       });
@@ -264,8 +241,12 @@ async function runTests() {
       const result = await proxyToolCall(reg.server_id, 'echo', { hi: 1 });
       assert(result.success === true, `Proxy should succeed, got: ${result.error}`);
       assert(
-        receivedAuth === 'Bearer real-token-abc123',
-        `Upstream must receive the real token, got: ${receivedAuth}`
+        stub.stats.lastAuth === 'Bearer real-token-abc123',
+        `Upstream must receive the real token, got: ${stub.stats.lastAuth}`
+      );
+      assert(
+        result.result.content[0].text === 'echo:{"hi":1}',
+        `Unexpected proxied payload: ${JSON.stringify(result.result)}`
       );
 
       // External surface stays masked; internal raw read is unmasked
@@ -282,7 +263,7 @@ async function runTests() {
 
       await unregisterServer(reg.server_id);
     } finally {
-      await new Promise((resolve) => mock.close(resolve));
+      await stub.close();
     }
   });
 
@@ -768,28 +749,13 @@ async function runTests() {
 
   // Test 24 [G15]: periodic health sweep updates connected servers
   await test('health sweep checks connected servers and updates lastCheck [G15]', async () => {
-    const http = await import('node:http');
-    const mock = http.createServer((req, res) => {
-      let body = '';
-      req.on('data', (chunk) => (body += chunk));
-      req.on('end', () => {
-        let rpc = {};
-        try {
-          rpc = JSON.parse(body);
-        } catch {
-          /* ignore */
-        }
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id || 1, result: {} }));
-      });
-    });
-    await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve));
+    const stub = await startMcpStub();
 
     const reg = await registerServer({
       project: 'test-project',
       name: 'Sweep Server',
       type: 'http',
-      url: `http://127.0.0.1:${mock.address().port}`,
+      url: stub.url,
     });
     await updateServer(reg.server_id, { status: 'connected' });
 
@@ -802,11 +768,11 @@ async function runTests() {
       assert(server.health?.lastCheck, 'Sweep must update lastCheck');
       assert(typeof server.health.latency === 'number', 'Sweep must record latency');
       assert(server.status === 'connected', 'Healthy server stays connected');
+      assert(stub.stats.initializes >= 1, 'Health check did not perform the MCP handshake');
     } finally {
       stopHealthSweep();
       await unregisterServer(reg.server_id);
-      if (typeof mock.closeAllConnections === 'function') mock.closeAllConnections();
-      await new Promise((resolve) => mock.close(resolve));
+      await stub.close();
     }
   });
 

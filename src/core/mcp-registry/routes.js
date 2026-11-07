@@ -23,9 +23,10 @@ import {
   checkServerHealth,
   getHealthSummary,
   discoverTools,
-  startHealthSweep,
+  startHealthSweep
 } from './index.js';
-import { proxyRequest, TIMEOUTS } from './proxy.js';
+import { TIMEOUTS } from './proxy.js';
+import { call as mcpCall } from './session.js';
 import { getEncryptionStatus, warnIfEncryptionDisabled } from './crypto.js';
 import { requireAuth, optionalAuth } from '../auth/index.js';
 import { isFeatureEnabled } from '../../../core/config/project-config-loader.js';
@@ -69,7 +70,7 @@ export function registerMCPRegistryRoutes(app) {
       if (!passesRegistryAdminGate(req)) {
         return res.status(403).json({
           success: false,
-          error: 'Admin role required to register MCP servers (features.mcpRegistryAdminGate)',
+          error: 'Admin role required to register MCP servers (features.mcpRegistryAdminGate)'
         });
       }
 
@@ -80,7 +81,7 @@ export function registerMCPRegistryRoutes(app) {
       if (!name) {
         return res.status(400).json({
           success: false,
-          error: 'Server name is required',
+          error: 'Server name is required'
         });
       }
 
@@ -98,7 +99,7 @@ export function registerMCPRegistryRoutes(app) {
         auth_config,
         tags,
         project,
-        agent,
+        agent
       });
 
       res.status(201).json(result);
@@ -173,7 +174,7 @@ export function registerMCPRegistryRoutes(app) {
       if (!passesRegistryAdminGate(req)) {
         return res.status(403).json({
           success: false,
-          error: 'Admin role required to unregister MCP servers (features.mcpRegistryAdminGate)',
+          error: 'Admin role required to unregister MCP servers (features.mcpRegistryAdminGate)'
         });
       }
 
@@ -302,7 +303,7 @@ export function registerMCPRegistryRoutes(app) {
       if (!method) {
         return res.status(400).json({
           success: false,
-          error: 'JSON-RPC method is required',
+          error: 'JSON-RPC method is required'
         });
       }
 
@@ -320,7 +321,7 @@ export function registerMCPRegistryRoutes(app) {
       if (server.type === 'stdio') {
         return res.status(400).json({
           success: false,
-          error: 'stdio servers cannot be proxied via HTTP',
+          error: 'stdio servers cannot be proxied via HTTP'
         });
       }
 
@@ -328,21 +329,17 @@ export function registerMCPRegistryRoutes(app) {
         return res.status(400).json({ success: false, error: 'Server URL not configured' });
       }
 
-      // Shared proxy path: injects real auth headers, enforces timeout policy,
-      // and applies the per-server circuit breaker.
+      // Shared session path: performs the MCP handshake, injects real auth
+      // headers, enforces the timeout policy, and applies the circuit breaker.
       try {
-        const result = await proxyRequest(
-          server,
-          { method, params: params || {} },
-          TIMEOUTS.default
-        );
-        res.json(result);
+        const { message } = await mcpCall(server, method, params || {}, TIMEOUTS.default);
+        res.json(message);
       } catch (err) {
         if (err.code === 'CIRCUIT_OPEN') {
           return res.status(503).json({
             error: 'MCP_SERVER_UNAVAILABLE',
             message: err.message,
-            details: { breaker: 'open', retry_after_ms: err.retryAfterMs },
+            details: { breaker: 'open', retry_after_ms: err.retryAfterMs }
           });
         }
         return res.status(502).json({ success: false, error: err.message });

@@ -3,28 +3,53 @@
  *
  * Provides JWT token authentication and API key management.
  * Supports both token-based auth (for dashboard) and API key auth (for programmatic access).
+ *
+ * Storage:
+ *  - Users and API keys live in the per-user CONFIG directory, separate from
+ *    the database (see `src/core/paths/index.js`).
+ *  - API keys are stored as SHA-256 hashes; the plaintext key is returned once
+ *    at creation time and never persisted.
+ *  - The JWT signing secret is generated once and persisted in `secrets.json`
+ *    (mode 0600) so tokens survive server restarts and multiple processes.
  */
 
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join } from 'path';
+import { getConfigDir } from '../paths/index.js';
 
 const DEFAULT_JWT_EXPIRY = '7d';
 const API_KEY_LENGTH = 48;
 const API_KEY_PREFIX = 'mcp_';
+const API_KEY_ID_PREFIX = 'key_';
+const STORE_VERSION = 2;
+
+function hashApiKey(rawKey) {
+  return crypto.createHash('sha256').update(rawKey, 'utf8').digest('hex');
+}
+
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function writePrivateFile(filePath, contents) {
+  writeFileSync(filePath, contents, { encoding: 'utf8', mode: 0o600 });
+}
 
 class AuthManager {
   constructor(options = {}) {
-    this.jwtSecret = options.jwtSecret || process.env.JWT_SECRET || this._generateSecret();
+    this.configDir = options.dataDir || options.configDir || getConfigDir();
+    // Kept for backwards compatibility with callers that read `dataDir`.
+    this.dataDir = this.configDir;
+    this.keysFile = join(this.configDir, 'api-keys.json');
+    this.usersFile = join(this.configDir, 'users.json');
+    this.secretsFile = join(this.configDir, 'secrets.json');
     this.jwtExpiry = options.jwtExpiry || process.env.JWT_EXPIRY || DEFAULT_JWT_EXPIRY;
-    this.dataDir = options.dataDir || join(__dirname, '..', '..', '..', 'data');
-    this.keysFile = join(this.dataDir, 'api-keys.json');
-    this.usersFile = join(this.dataDir, 'users.json');
+    this.jwtSecret = options.jwtSecret || process.env.JWT_SECRET || this._loadOrCreateJwtSecret();
     this._apiKeys = new Map();
     this._users = new Map();
     this._loadKeys();
@@ -35,48 +60,126 @@ class AuthManager {
     return crypto.randomBytes(48).toString('base64');
   }
 
-  _ensureDataDir() {
-    if (!existsSync(this.dataDir)) {
-      mkdirSync(this.dataDir, { recursive: true });
+  _ensureConfigDir() {
+    if (!existsSync(this.configDir)) {
+      mkdirSync(this.configDir, { recursive: true });
+    }
+  }
+
+  /**
+   * Read the persisted JWT secret, generating and storing one on first run.
+   * Falls back to an ephemeral secret (with a warning) if the config directory
+   * is not writable, so the server still starts in read-only environments.
+   */
+  _loadOrCreateJwtSecret() {
+    try {
+      if (existsSync(this.secretsFile)) {
+        const data = JSON.parse(readFileSync(this.secretsFile, 'utf8'));
+        if (data && typeof data.jwtSecret === 'string' && data.jwtSecret.length >= 32) {
+          return data.jwtSecret;
+        }
+      }
+    } catch {
+      // Corrupt secrets file: regenerate below rather than failing to start.
+    }
+
+    const secret = this._generateSecret();
+    try {
+      this._ensureConfigDir();
+      let existing = {};
+      if (existsSync(this.secretsFile)) {
+        try {
+          existing = JSON.parse(readFileSync(this.secretsFile, 'utf8')) || {};
+        } catch {
+          existing = {};
+        }
+      }
+      writePrivateFile(
+        this.secretsFile,
+        `${JSON.stringify({ ...existing, jwtSecret: secret }, null, 2)}\n`
+      );
+    } catch (error) {
+      process.stderr.write(
+        `[auth] WARN: could not persist JWT secret (${error.message}). ` +
+          'Tokens will not survive a restart.\n'
+      );
+    }
+    return secret;
+  }
+
+  _readJson(filePath, fallback) {
+    try {
+      if (!existsSync(filePath)) return fallback;
+      return JSON.parse(readFileSync(filePath, 'utf8'));
+    } catch {
+      return fallback;
     }
   }
 
   _loadKeys() {
-    try {
-      if (existsSync(this.keysFile)) {
-        const data = JSON.parse(readFileSync(this.keysFile, 'utf-8'));
-        for (const [key, meta] of Object.entries(data)) {
-          this._apiKeys.set(key, meta);
+    const data = this._readJson(this.keysFile, null);
+    if (!data) return;
+
+    if (data.version === STORE_VERSION && Array.isArray(data.keys)) {
+      for (const entry of data.keys) {
+        if (entry && typeof entry.hash === 'string') {
+          this._apiKeys.set(entry.hash, entry);
         }
       }
-    } catch {
-      this._apiKeys = new Map();
+      return;
+    }
+
+    // Legacy store: a map keyed by the plaintext API key. Migrate to hashes
+    // in place so existing keys keep working without re-issuing them.
+    let migrated = false;
+    for (const [rawKey, meta] of Object.entries(data || {})) {
+      if (!rawKey.startsWith(API_KEY_PREFIX) || !meta || typeof meta !== 'object') continue;
+      const entry = this._toStoredKey(rawKey, meta);
+      this._apiKeys.set(entry.hash, entry);
+      migrated = true;
+    }
+    if (migrated) {
+      this._saveKeys();
     }
   }
 
+  _toStoredKey(rawKey, meta = {}) {
+    return {
+      keyId: meta.keyId || `${API_KEY_ID_PREFIX}${crypto.randomBytes(8).toString('hex')}`,
+      hash: hashApiKey(rawKey),
+      // Masked display form only. Never the plaintext key.
+      preview: `${rawKey.slice(0, 12)}...${rawKey.slice(-4)}`,
+      name: meta.name || 'api-key',
+      permissions: Array.isArray(meta.permissions) ? meta.permissions : ['read'],
+      project: meta.project || null,
+      createdAt: meta.createdAt || new Date().toISOString(),
+      expiresAt: meta.expiresAt || null,
+      lastUsed: meta.lastUsed || null,
+      usageCount: Number.isInteger(meta.usageCount) ? meta.usageCount : 0,
+    };
+  }
+
   _saveKeys() {
-    this._ensureDataDir();
-    const data = Object.fromEntries(this._apiKeys);
-    writeFileSync(this.keysFile, JSON.stringify(data, null, 2));
+    this._ensureConfigDir();
+    const payload = {
+      version: STORE_VERSION,
+      keys: Array.from(this._apiKeys.values()),
+    };
+    writePrivateFile(this.keysFile, `${JSON.stringify(payload, null, 2)}\n`);
   }
 
   _loadUsers() {
-    try {
-      if (existsSync(this.usersFile)) {
-        const data = JSON.parse(readFileSync(this.usersFile, 'utf-8'));
-        for (const [username, userData] of Object.entries(data)) {
-          this._users.set(username, userData);
-        }
-      }
-    } catch {
-      this._users = new Map();
+    const data = this._readJson(this.usersFile, null);
+    if (!data) return;
+    for (const [username, userData] of Object.entries(data)) {
+      this._users.set(username, userData);
     }
   }
 
   _saveUsers() {
-    this._ensureDataDir();
+    this._ensureConfigDir();
     const data = Object.fromEntries(this._users);
-    writeFileSync(this.usersFile, JSON.stringify(data, null, 2));
+    writePrivateFile(this.usersFile, `${JSON.stringify(data, null, 2)}\n`);
   }
 
   /**
@@ -105,6 +208,13 @@ class AuthManager {
   }
 
   /**
+   * True when no user account exists yet (used to bootstrap the first admin).
+   */
+  hasUsers() {
+    return this._users.size > 0;
+  }
+
+  /**
    * Verify user credentials
    */
   verifyUser(username, password) {
@@ -114,7 +224,17 @@ class AuthManager {
     }
 
     const hash = crypto.pbkdf2Sync(password, user.salt, 100000, 64, 'sha512').toString('hex');
-    return hash === user.hash;
+    if (!safeEqual(hash, user.hash)) {
+      return false;
+    }
+
+    user.lastLogin = new Date().toISOString();
+    this._saveUsers();
+    return true;
+  }
+
+  getRole(username) {
+    return this._users.get(username)?.role || null;
   }
 
   /**
@@ -138,6 +258,8 @@ class AuthManager {
   /**
    * Create API key
    *
+   * The plaintext key is returned exactly once. Only its SHA-256 hash is stored.
+   *
    * @param {string} name - human label for the key
    * @param {string[]} permissions - capability list (e.g. ['read','write','admin'])
    * @param {string|null} expiresAt - ISO expiry or null
@@ -146,7 +268,7 @@ class AuthManager {
    */
   createApiKey(name, permissions = ['read'], expiresAt = null, project = null) {
     const key = API_KEY_PREFIX + crypto.randomBytes(API_KEY_LENGTH).toString('hex');
-    const meta = {
+    const entry = this._toStoredKey(key, {
       name,
       permissions,
       project,
@@ -154,10 +276,12 @@ class AuthManager {
       expiresAt,
       lastUsed: null,
       usageCount: 0,
-    };
+    });
 
-    this._apiKeys.set(key, meta);
+    this._apiKeys.set(entry.hash, entry);
     this._saveKeys();
+
+    const { hash: _hash, ...meta } = entry;
     return { key, ...meta };
   }
 
@@ -165,45 +289,81 @@ class AuthManager {
    * Validate API key
    */
   validateApiKey(key) {
-    if (!key || !key.startsWith(API_KEY_PREFIX)) {
+    if (!key || typeof key !== 'string' || !key.startsWith(API_KEY_PREFIX)) {
       return null;
     }
 
-    const meta = this._apiKeys.get(key);
-    if (!meta) {
+    const entry = this._apiKeys.get(hashApiKey(key));
+    if (!entry) {
       return null;
     }
 
-    if (meta.expiresAt && new Date(meta.expiresAt) < new Date()) {
+    if (entry.expiresAt && new Date(entry.expiresAt) < new Date()) {
       return null;
     }
 
-    meta.lastUsed = new Date().toISOString();
-    meta.usageCount++;
+    entry.lastUsed = new Date().toISOString();
+    entry.usageCount++;
     this._saveKeys();
 
+    const { hash: _hash, ...meta } = entry;
     return meta;
   }
 
   /**
-   * Revoke API key
+   * Revoke API key by plaintext key or by `keyId` (as returned by listApiKeys).
    */
-  revokeApiKey(key) {
-    const deleted = this._apiKeys.delete(key);
-    if (deleted) {
-      this._saveKeys();
+  revokeApiKey(identifier) {
+    if (!identifier || typeof identifier !== 'string') {
+      return false;
     }
-    return deleted;
+
+    let hash = null;
+    if (identifier.startsWith(API_KEY_PREFIX)) {
+      hash = hashApiKey(identifier);
+    } else {
+      for (const [candidateHash, entry] of this._apiKeys) {
+        if (entry.keyId === identifier) {
+          hash = candidateHash;
+          break;
+        }
+      }
+    }
+
+    if (!hash || !this._apiKeys.has(hash)) {
+      return false;
+    }
+
+    this._apiKeys.delete(hash);
+    this._saveKeys();
+    return true;
   }
 
   /**
-   * List all API keys (redacted)
+   * List all API keys (redacted, never includes hashes or plaintext).
    */
   listApiKeys() {
-    return Array.from(this._apiKeys.entries()).map(([key, meta]) => ({
-      key: key.substring(0, 8) + '...' + key.substring(key.length - 4),
-      ...meta,
+    return Array.from(this._apiKeys.values()).map((entry) => ({
+      keyId: entry.keyId,
+      key: entry.preview,
+      name: entry.name,
+      permissions: entry.permissions,
+      project: entry.project,
+      createdAt: entry.createdAt,
+      expiresAt: entry.expiresAt,
+      lastUsed: entry.lastUsed,
+      usageCount: entry.usageCount,
     }));
+  }
+
+  /**
+   * Aggregate counts for health endpoints.
+   */
+  getStats() {
+    return {
+      userCount: this._users.size,
+      keyCount: this._apiKeys.size,
+    };
   }
 }
 
@@ -214,6 +374,13 @@ function getAuthManager(options) {
     _instance = new AuthManager(options);
   }
   return _instance;
+}
+
+/**
+ * Reset the singleton. Intended for tests only.
+ */
+function resetAuthManager() {
+  _instance = null;
 }
 
 /**
@@ -347,9 +514,11 @@ function requireRole(...roles) {
 export {
   AuthManager,
   getAuthManager,
+  resetAuthManager,
   requireAuth,
   requireApiKey,
   optionalAuth,
   requireRole,
+  hashApiKey,
   API_KEY_PREFIX,
 };

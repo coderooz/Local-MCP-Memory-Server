@@ -2,7 +2,7 @@
 
 **Project:** local-mcp-memory
 **Version:** 2.6.0
-**Last Updated:** 2026-10-17
+**Last Updated:** 2026-11-05
 **Status:** Active
 
 ---
@@ -12,8 +12,8 @@
 | Field                 | Value                                       |
 | --------------------- | ------------------------------------------- |
 | Created               | 2026-09-19                                  |
-| Last Updated          | 2026-09-19                                  |
-| Last Verified         | 2026-09-19                                  |
+| Last Updated          | 2026-11-05                                  |
+| Last Verified         | 2026-11-05                                  |
 | Verification Type     | FULL                                        |
 | Canonical Location    | `.workspace/LFI/LOGIC_FLOW_INDEX.md`        |
 | Companion (Structure) | `.workspace/PRI/PROJECT_REFERENCE_INDEX.md` |
@@ -75,14 +75,15 @@ Both entry points converge on the same Express HTTP API server (`server.js`), wh
 
 **Flow:**
 
-1. Load environment variables from `.env`
+1. Load environment variables from `.env` and global user configuration (`src/core/config/user-config.js`)
 2. Resolve project identity (`utils/projectIdentity.js`)
-3. Start internal HTTP memory server (`startMemoryServer.js` → `server.js`)
-4. Initialize connection resolver (`core/config/connectionResolver.js`)
-5. Set up readline interface for stdio communication
-6. Wait for MCP requests on stdin
-7. Route requests to appropriate tool handlers
-8. Return responses on stdout
+3. Recover stale or orphaned file locks in runtime directory (`core/config/runtime-state.js` validates PID liveness via `isValidPID`)
+4. Start or locate internal HTTP memory server (`startMemoryServer.js` → `server.js`) using dynamic port allocation (`47000..47020`, with `4000` discovery fallback)
+5. Initialize connection resolver (`core/config/connectionResolver.js`) verifying process liveness before cleaning mismatched runtime files
+6. Set up readline interface for stdio JSON-RPC communication
+7. Wait for MCP requests on stdin
+8. Route requests to appropriate tool handlers (including dynamically registered proxied MCP servers)
+9. Return responses on stdout
 
 **State Transitions:**
 
@@ -97,14 +98,15 @@ IDLE → STARTING → READY → PROCESSING → READY
 
 **Flow:**
 
-1. Load environment variables
-2. Initialize SQLite database (`src/core/database/sqlite/index.js`)
-3. Initialize plugin manager (`core/plugin/plugin-manager.js`)
-4. Register Express middleware (CORS, JSON parsing, error handling)
-5. Register API routes (`src/interfaces/api/routes.js`)
-6. Start listening on port (dynamic or configured)
-7. Begin health check polling
-8. Accept HTTP requests
+1. Load environment variables and runtime settings (`MCP_DB_PATH`, `PORT`, `MCP_PROJECT`)
+2. Check existing `.mcp-runtime.json`; verify port congruence (`portMatches`) and process liveness before reusing active instances to prevent cross-port hijacking
+3. Initialize SQLite database (`src/core/database/sqlite/index.js`, synchronous embedded WAL mode)
+4. Initialize plugin manager (`core/plugin/plugin-manager.js`)
+5. Register Express middleware (CORS, JSON parsing, error handling, rate limiting)
+6. Register API routes (`src/interfaces/api/routes.js`, auth routes, MCP registry routes, dashboard SPA fallback)
+7. Start listening on resolved port (`47000..47020` or explicitly configured `PORT`)
+8. Write verified runtime descriptor (`.mcp-runtime.json`) and announce active port to stderr
+9. Begin health check polling and accept HTTP requests
 
 **State Transitions:**
 
@@ -242,31 +244,62 @@ LOCKED → RELEASED (explicit release)
 
 ### 9. CLI Command Execution
 
-**Entry:** `bin/cli.js`
+**Entry:** `bin/cli.js` (executables: `local-mcp-memory`, aliases: `mcp-memory`, `local-memory-mcp`)
 
 **Flow:**
 
-1. Parse command-line arguments (Commander)
-2. Resolve server URL from environment or config
-3. Make HTTP request to appropriate API endpoint
-4. Format and display response
-5. Exit with appropriate status code
+1. Parse command-line arguments (Commander 12)
+2. Resolve server URL, runtime directory, and configuration (`src/core/paths/runtime-paths.js`, `src/core/config/user-config.js`)
+3. Execute local operational logic (for `init`, `doctor`, `migrate`, `update`, `uninstall`, `start`, `stop`) or dispatch HTTP request to running API server
+4. Format and display structured response or ANSI output
+5. Exit with appropriate process exit code
 
-**Supported Commands:**
+**Supported Commands (17 Total):**
 
-- `start` — Start MCP server (spawns `node mcp-server.js`)
-- `stop` — Stop running server
-- `status` — GET `/health`
-- `search <query>` — POST `/context/search`
-- `create-task <title>` — POST `/task/create`
-- `list-tasks` — GET `/task/list`
-- `create-issue <title>` — POST `/issue/create`
-- `list-issues` — GET `/issue/list`
-- `list-agents` — GET `/agent/list`
-- `health` — GET `/health`
-- `store <content>` — POST `/context/store`
-- `config` — Display resolved configuration
-- `init` — Initialize new project config
+- `init` — Guided or automated installation, directory initialization, database provisioning, and AI agent configuration (`opencode`, `codex`, `claude`, `cursor`, `windsurf`, `cline`) with `--dry-run` AST-safe merging (`src/core/setup/agent-configs.js`, `src/core/setup/jsonc.js`)
+- `start` — Start MCP server in foreground or background (spawns `node mcp-server.js` or `server.js`)
+- `stop` — Gracefully stop running server process by reading active PID from `.mcp-runtime.json`
+- `status` — Check server liveness, PID, port, and health stats via GET `/health`
+- `doctor` — Comprehensive system diagnostic checklist (`src/core/cli/doctor.js`): Node version, SQLite driver integrity, port availability, agent config status, and permission validation
+- `config` — Inspect, get, set, or dump resolved global/project configuration
+- `update` — Check for package updates or run schema migrations
+- `uninstall` — Cleanly remove agent configuration registrations and optionally clear runtime caches
+- `migrate` — Run MongoDB-to-SQLite schema and data migration pipeline (`src/core/migration/mongo-to-sqlite.js`)
+- `search <query>` — Full-text memory search via POST `/context/search`
+- `store <content>` — Store persistent memory context via POST `/context`
+- `create-task <title>` — Create project-scoped task via POST `/task`
+- `list-tasks` — List tasks with status filters via GET `/task/list`
+- `create-issue <title>` — Log issue or blocker via POST `/issue`
+- `list-issues` — List project issues via GET `/issue/list`
+- `list-agents` — List registered agents and presence heartbeats via GET `/agent/list`
+- `health` — Diagnostic health probe via GET `/health`
+
+#### Detailed Sub-Flow: `init` Pipeline
+1. **Environment & OS Detection:** Detect OS platform, home directory, Node.js version (>=20.0.0), and npm global/local context.
+2. **Runtime Directory Initialization:** Provision application data directory via `src/core/paths/runtime-paths.js` (`~/.local-mcp-memory` or `AppData\Roaming\local-mcp-memory`).
+3. **Database Initialization:** Ensure SQLite database and WAL mode are created with initial schemas (`src/core/database/sqlite/schema.js`).
+4. **Secret Generation:** Verify or generate `MCP_MASTER_SECRET` and JWT signing secrets in `user-config.json`.
+5. **Agent Configuration Discovery & Registration:**
+   - Scan target agent configuration locations (`opencode.json`, Claude Desktop config, Codex CLI config, Cursor, Windsurf, Cline).
+   - Read existing configs; if `--dry-run` is active, plan changes without writing.
+   - For JSON/JSONC configs, parse into AST preserving comments and formatting (`src/core/setup/jsonc.js`).
+   - Create timestamped `.bak` backup before writing.
+   - Inject or update `local-mcp-memory` server entry with stdio transport.
+6. **Verification & Summary:** Verify syntax of updated configuration files and output interactive summary.
+
+#### Detailed Sub-Flow: `doctor` Diagnostic Check
+1. **Node Environment:** Validates Node runtime >= 20.0.0.
+2. **Database Integrity:** Tests SQLite embedded database connection, executes quick PRAGMA check.
+3. **Port Availability:** Tests dynamic port range `47000..47020` and backward-compatible port `4000`.
+4. **Agent Configurations:** Scans for installed AI agents, validates JSON/TOML syntax of their config files, checks registration state.
+5. **Filesystem Permissions:** Validates read/write permissions in runtime data directories.
+
+#### Detailed Sub-Flow: `migrate` Pipeline
+1. **Connection:** Connects to source MongoDB database using provided URI.
+2. **Validation:** Checks collection schemas (`contexts`, `tasks`, `issues`, etc.).
+3. **Batch Transfer:** Reads batches from MongoDB collections, transforms IDs to UUIDs, and inserts into SQLite tables with transaction safety.
+4. **FTS Re-indexing:** Populates SQLite FTS5 search tables from imported memory contents.
+5. **Summary & Verification:** Emits row counts, matches source vs target totals, logs errors without modifying source MongoDB.
 
 ### 10. Dashboard Serving Flow
 
@@ -496,6 +529,20 @@ AUTHENTICATED → EXPIRED (JWT TTL exceeded)
 ---
 
 ## Reference Maintenance Log
+
+### 2026-11-05
+
+**Change:** Production Readiness, Canonical Identity Reconciliation (`local-mcp-memory`), Global CLI Distribution, Multi-Agent Adapters, and Runtime Resilience
+
+**Classification:** ADDED / UPDATED
+
+**Updated:**
+- Section 9 (CLI Command Execution): Expanded from 13 to 17 commands (`init`, `start`, `stop`, `status`, `doctor`, `config`, `update`, `uninstall`, `migrate`, `search`, `store`, `create-task`, `list-tasks`, `create-issue`, `list-issues`, `list-agents`, `health`).
+- Documented detailed sub-flows for `init` (OS/env detection, AST-safe config parsing with `--dry-run`), `doctor` (diagnostic checklist), and `migrate` (MongoDB to SQLite pipeline).
+- Updated Section 1 (MCP Startup) & Section 2 (HTTP Startup) with dynamic port negotiation (`47000..47020`), dead-PID lock cleanup (`isValidPID`), and port congruence verification (`portMatches`).
+- Registered multi-agent adapters for OpenCode, Codex CLI, Claude Desktop, Cursor, Windsurf, Cline.
+
+**Verification:** FULL (133/133 tests green: 114 core suite + 19 resilience suite; all 17 CLI commands verified)
 
 ### 2026-10-18
 

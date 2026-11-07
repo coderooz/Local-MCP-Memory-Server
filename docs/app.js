@@ -129,13 +129,15 @@ const SITE = {
       intro:
         'These are the shortest reliable steps to get the API, MCP transport, and project-aware shim working locally.',
       steps: [
-        'Install dependencies with `npm install`.',
-        'Create a `.env` file with your database path and project-scoped MCP values.',
+        'Initialize globally or per-project with `npx local-mcp-memory init` (or `npm install -g local-mcp-memory`).',
+        'Run diagnostics with `npx local-mcp-memory doctor` to verify environment and agent configurations.',
+        'Install local dependencies with `npm install` for development.',
+        'Create a `.env` file with your database path (`MCP_DB_PATH`) and project-scoped MCP values.',
         'Start the API with `npm run start:api`.',
         'Start the MCP transport with `npm start` when you want to test it directly.',
         'Use `mcp-shim.js` for editor integrations so project identity is resolved from the current repository.',
-        'Use the CLI with `npx mcp-memory <command>` for quick operations.',
-        'Open the dashboard at `http://localhost:4000/dashboard` for a visual overview.',
+        'Use the CLI with `npx local-mcp-memory <command>` (17 commands supported).',
+        'Open the dashboard at `http://localhost:4000/dashboard` (or dynamic port 47000-47020) for a visual overview.',
       ],
       visuals: [
         [
@@ -158,7 +160,17 @@ const SITE = {
         'Project-level environment configuration for stable attribution.',
       ],
       modes: [
-        ['Install dependencies', 'npm install', 'Run once after cloning.'],
+        [
+          'Global / Agent Init',
+          'npx local-mcp-memory init',
+          'Auto-configures OpenCode, Codex, Claude, Cursor, Windsurf, Cline.',
+        ],
+        [
+          'System Diagnostics',
+          'npx local-mcp-memory doctor',
+          'Tests Node version, SQLite integrity, port availability, and agent configs.',
+        ],
+        ['Install dependencies', 'npm install', 'Run once after cloning for dev.'],
         [
           'Run the API',
           'npm run start:api',
@@ -176,8 +188,13 @@ const SITE = {
         ],
         [
           'Run the CLI',
-          'npx mcp-memory status',
-          'Quick status check, search, task management, and more.',
+          'npx local-mcp-memory status',
+          'Quick status check, search, task management, and more (17 commands).',
+        ],
+        [
+          'Migrate MongoDB',
+          'npx local-mcp-memory migrate',
+          'Safe schema & data migration pipeline from MongoDB to embedded SQLite.',
         ],
         [
           'Open the dashboard',
@@ -188,8 +205,8 @@ const SITE = {
       envNote:
         'For predictable attribution, keep `MCP_PROJECT` stable and prefer the shim when the active repository should determine the namespace automatically.',
       envRows: [
-        ['DB_PATH', 'Optional', './data/memory.db', 'Path to the SQLite database file.'],
-        ['PORT', 'Optional', '4000', 'HTTP API port used by `server.js`.'],
+        ['MCP_DB_PATH', 'Optional', './data/mcp-memory.db', 'Path to the SQLite database file (precedence over DB_PATH).'],
+        ['PORT', 'Optional', '4000 (or dynamic 47000..47020)', 'HTTP API port used by `server.js`.'],
         [
           'MCP_AGENT',
           'Recommended',
@@ -368,11 +385,13 @@ const SITE = {
           'Authentication',
           [
             ['POST /auth/login', 'Authenticate with username/password, returns JWT.'],
+            ['POST /auth/register', 'Register new user account (first user becomes admin).'],
+            ['GET /auth/me', 'Get current authenticated user info.'],
+            ['POST /auth/refresh', 'Refresh an active JWT token.'],
             ['POST /auth/api-keys', 'Create a new API key.'],
             ['GET /auth/api-keys', 'List all API keys.'],
-            ['DELETE /auth/api-keys/:id', 'Revoke an API key.'],
-            ['POST /auth/verify', 'Verify a JWT token.'],
-            ['POST /auth/refresh', 'Refresh an expired JWT.'],
+            ['DELETE /auth/api-keys/:key', 'Revoke an API key by keyId or plaintext key.'],
+            ['GET /auth/health', 'Auth system status and user/key counts.'],
           ],
         ],
         [
@@ -407,7 +426,7 @@ const SITE = {
           'A practical local starting point with stable project attribution.',
           '.env',
           'env',
-          `DB_PATH=./data/memory.db
+          `MCP_DB_PATH=./data/mcp-memory.db
 PORT=4000
 MCP_PROJECT=local-mcp-server
 MCP_AGENT=codex

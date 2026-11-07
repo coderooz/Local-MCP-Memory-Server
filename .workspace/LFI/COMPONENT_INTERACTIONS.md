@@ -2,7 +2,7 @@
 
 **Project:** local-mcp-memory
 **Version:** 2.6.0
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-11-05
 
 ---
 
@@ -485,7 +485,159 @@
 
 ---
 
+## Global CLI & Diagnostics (`bin/cli.js`, `src/core/cli/*`)
+
+**Purpose:** CLI entry point (`local-mcp-memory`, aliases: `mcp-memory`, `local-memory-mcp`) providing 17 commands for server control, agent initialization, diagnostics, migration, and memory operations.
+
+**Inputs:**
+
+- CLI arguments and command flags (Commander 12)
+- Local runtime state (`.mcp-runtime.json`)
+- System environment (`process.env`, OS info)
+
+**Outputs:**
+
+- Formatted ANSI console summaries
+- JSON diagnostic results (`doctor`)
+- Subprocess spawning for `start` / `stop`
+- HTTP calls to local API server
+
+**Dependencies:**
+
+- `src/core/paths/runtime-paths.js` — OS runtime paths
+- `src/core/config/user-config.js` — Global user configuration
+- `src/core/setup/agent-configs.js` — AI agent configuration adapters
+- `src/core/cli/doctor.js` — Diagnostic checks
+- `src/core/migration/mongo-to-sqlite.js` — Migration pipeline
+
+**Dependents:**
+
+- End users running `npx local-mcp-memory <cmd>` or global `local-mcp-memory`
+- AI agents executing automated self-checks and configuration
+
+**Error Behavior:**
+
+- Structured error messages printed to stderr
+- Non-zero exit codes on fatal failures
+- `--dry-run` flag in `init` prevents partial or corrupt file writes
+
+---
+
+## Runtime Path Resolution (`src/core/paths/runtime-paths.js`)
+
+**Purpose:** Cross-platform resolution and provisioning of application data, configuration, log, and database directories.
+
+**Inputs:**
+
+- Operating system (`process.platform`)
+- Environment variables (`LOCALAPPDATA`, `APPDATA`, `XDG_DATA_HOME`, `HOME`, `MCP_DB_PATH`)
+
+**Outputs:**
+
+- Standardized directory paths: `dataDir`, `configDir`, `logsDir`, `runtimeDir`
+- Database path resolution with precedence: `MCP_DB_PATH` > config file > default SQLite path
+
+**Dependencies:**
+
+- Node.js built-ins (`node:path`, `node:os`, `node:fs`)
+
+**Dependents:**
+
+- `bin/cli.js`
+- `src/core/config/user-config.js`
+- `src/core/setup/agent-configs.js`
+- `src/core/database/sqlite/index.js`
+- `core/config/runtime-state.js`
+
+**Error Behavior:**
+
+- Auto-creates directories recursively if missing (`mkdirSync({ recursive: true })`)
+- Throws descriptive path resolution errors on missing home directory
+
+---
+
+## Agent Configuration Adapters (`src/core/setup/agent-configs.js`, `src/core/setup/jsonc.js`)
+
+**Purpose:** Discovery, parsing, registration, and updating of MCP server definitions across 6 major AI agent clients (`opencode`, `codex`, `claude`, `cursor`, `windsurf`, `cline`).
+
+**Inputs:**
+
+- Target agent configuration files (`opencode.json`, `config.toml`, `claude_desktop_config.json`, `mcp.json`, etc.)
+- Options (`dryRun`, custom paths, transport parameters)
+
+**Outputs:**
+
+- Updated agent configuration files with `local-mcp-memory` stdio entry
+- Timestamped configuration backups (`.bak`)
+- Summary report of detected, updated, or skipped agent configs
+
+**Dependencies:**
+
+- `src/core/setup/jsonc.js` — Comment- and formatting-preserving JSONC AST parser
+- `src/core/paths/runtime-paths.js` — Standard agent config locations
+
+**Dependents:**
+
+- `bin/cli.js` (`init` and `uninstall` commands)
+- `src/core/cli/install-state.js`
+
+**Error Behavior:**
+
+- Validates syntax before overwriting
+- Never corrupts existing comments or custom keys
+- Restores from backup if atomic write fails
+- Supports dry-run execution without modifying target files
+
+---
+
+## MongoDB to SQLite Migration (`src/core/migration/mongo-to-sqlite.js`)
+
+**Purpose:** Schema and data migration pipeline from legacy MongoDB instances to v2.6.0 embedded SQLite.
+
+**Inputs:**
+
+- MongoDB connection URI
+- Target SQLite database instance
+
+**Outputs:**
+
+- Transferred collection rows in `contexts`, `tasks`, `issues`, `agents`, `messages`, `activity`
+- Re-indexed FTS5 search index
+- Structured migration report with counts and timing
+
+**Dependencies:**
+
+- `src/core/database/sqlite/index.js` — SQLite database connection
+- MongoDB driver (loaded dynamically if migration invoked)
+
+**Dependents:**
+
+- `bin/cli.js` (`migrate` command)
+
+**Error Behavior:**
+
+- Atomic transactions per collection batch; rolls back on failure
+- Read-only on source MongoDB — never drops or alters source collections
+- Validates data types and schema mappings before inserting
+
+---
+
 ## Reference Maintenance Log
+
+### 2026-11-05
+
+**Change:** Added Global CLI, Runtime Paths, Multi-Agent Setup Adapters, and Migration Components
+
+**Classification:** ADDED
+
+**Updated:**
+- Added `## Global CLI & Diagnostics (`bin/cli.js`, `src/core/cli/*`)`
+- Added `## Runtime Path Resolution (`src/core/paths/runtime-paths.js`)`
+- Added `## Agent Configuration Adapters (`src/core/setup/agent-configs.js`, `src/core/setup/jsonc.js`)`
+- Added `## MongoDB to SQLite Migration (`src/core/migration/mongo-to-sqlite.js`)`
+- Documented inputs, outputs, dependencies, dependents, and error behavior for all new components
+
+**Verification:** FULL (verified against component implementations and 133 test assertions)
 
 ### 2026-10-07
 

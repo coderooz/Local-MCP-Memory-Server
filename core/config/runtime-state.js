@@ -169,6 +169,15 @@ async function acquireFileLock(filePath, timeout = RUNTIME_LOCK_TIMEOUT, staleMs
       }
 
       try {
+        const lockContent = await fs.promises.readFile(lockPath, 'utf8');
+        const lockData = JSON.parse(lockContent);
+        if (lockData.pid && !(await isValidPID(lockData.pid))) {
+          await fs.promises.unlink(lockPath);
+          continue;
+        }
+      } catch {}
+
+      try {
         const stats = await fs.promises.stat(lockPath);
         if (Date.now() - stats.mtimeMs > staleMs) {
           await fs.promises.unlink(lockPath);

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { loadChromium } from '../core/browser/playwright-loader.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
@@ -27,7 +27,7 @@ function createStructuredResponse(success, data = null, error = null, meta = {})
     success,
     ...(data !== null && { data }),
     ...(error && { error }),
-    meta: { timestamp: Date.now(), ...meta }
+    meta: { timestamp: Date.now(), ...meta },
   };
 }
 
@@ -130,8 +130,8 @@ async function getSharedBrowser() {
   }
 
   if (!sharedBrowserLaunch) {
-    sharedBrowserLaunch = chromium
-      .launch({ headless: true })
+    sharedBrowserLaunch = loadChromium()
+      .then((chromium) => chromium.launch({ headless: true }))
       .then((browser) => {
         sharedBrowser = browser;
         return browser;
@@ -169,7 +169,7 @@ async function getOrCreateSession(sessionId) {
       const browser = await getSharedBrowser();
       const context = await browser.newContext({
         viewport: DEFAULT_VIEWPORT,
-        userAgent: DEFAULT_USER_AGENT
+        userAgent: DEFAULT_USER_AGENT,
       });
       const page = await context.newPage();
       sessions.set(sessionId, { context, page, createdAt: Date.now() });
@@ -276,7 +276,7 @@ export class BrowserService {
       const response = await session.page
         .goto(url, {
           waitUntil,
-          timeout: DEFAULT_TIMEOUT
+          timeout: DEFAULT_TIMEOUT,
         })
         .catch((err) => {
           return createStructuredResponse(false, null, `Navigation failed: ${err.message}`);
@@ -289,7 +289,7 @@ export class BrowserService {
           `HTTP error: ${response?.status() || 'unknown'}`,
           {
             url: session.page.url(),
-            status: response?.status() || null
+            status: response?.status() || null,
           }
         );
       }
@@ -297,7 +297,7 @@ export class BrowserService {
       return createStructuredResponse(true, {
         url: session.page.url(),
         title: await session.page.title(),
-        status: response.status()
+        status: response.status(),
       });
     } catch (error) {
       return createStructuredResponse(false, null, error.message);
@@ -448,7 +448,7 @@ export class BrowserService {
       return createStructuredResponse(true, {
         screenshot: buffer.toString('base64'),
         fullPage,
-        savedTo: filePath || null
+        savedTo: filePath || null,
       });
     } catch (error) {
       return createStructuredResponse(false, null, error.message);
@@ -526,7 +526,7 @@ export class BrowserService {
       await session.page.reload({ waitUntil });
       return createStructuredResponse(true, {
         url: session.page.url(),
-        title: await session.page.title()
+        title: await session.page.title(),
       });
     } catch (error) {
       return createStructuredResponse(false, null, error.message);
@@ -544,7 +544,7 @@ export class BrowserService {
       await session.page.goBack();
       return createStructuredResponse(true, {
         url: session.page.url(),
-        title: await session.page.title()
+        title: await session.page.title(),
       });
     } catch (error) {
       return createStructuredResponse(false, null, error.message);
@@ -562,7 +562,7 @@ export class BrowserService {
       await session.page.goForward();
       return createStructuredResponse(true, {
         url: session.page.url(),
-        title: await session.page.title()
+        title: await session.page.title(),
       });
     } catch (error) {
       return createStructuredResponse(false, null, error.message);
@@ -600,7 +600,7 @@ export class BrowserService {
           tag: node.tagName || '',
           id: node.id || '',
           classes: node.className || '',
-          text: node.textContent?.trim() || ''
+          text: node.textContent?.trim() || '',
         }))
       );
       return createStructuredResponse(true, { elements: results, count: results.length });
@@ -688,7 +688,7 @@ export class BrowserService {
   getActiveSessions() {
     return createStructuredResponse(true, {
       sessions: Array.from(sessions.keys()),
-      count: sessions.size
+      count: sessions.size,
     });
   }
 }

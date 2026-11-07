@@ -57,39 +57,57 @@ jobs:
         run: npm run check
 
   test:
-    name: Tests
-    runs-on: ubuntu-latest
+    name: Tests (${{ matrix.os }}, Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: [20.x, 22.x]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Run test suite
         run: npm test
 
+      - name: Run resilience tests
+        run: npm run test:resilience
+
+      - name: Run documentation consistency verification
+        run: node scripts/verify-docs-consistency.mjs
+
+      - name: Run workspace governance verification
+        run: node tests/workspace-governance-test.mjs
+
   isolation:
-    name: Isolation & Regression Harness
+    name: Isolation & Regression Harness (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x, 22.x]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
@@ -105,7 +123,7 @@ jobs:
         run: npm run test:gaps
 
   build:
-    name: Build
+    name: Build & Package Verification
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -116,7 +134,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: 20.x
           cache: npm
 
       - name: Install dependencies
@@ -124,8 +142,9 @@ jobs:
 
       - name: Validate package.json
         run: |
-          node -e "
-            const pkg = require('./package.json');
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
             console.log('Package validation:');
             console.log('- Name:', pkg.name);
             console.log('- Version:', pkg.version);
@@ -133,6 +152,9 @@ jobs:
             console.log('- Dependencies:', Object.keys(pkg.dependencies).length);
             console.log('- All scripts defined:', pkg.scripts ? 'Yes' : 'No');
           "
+
+      - name: Dry-run package packing
+        run: npm pack --dry-run
 
   security:
     name: Security Audit

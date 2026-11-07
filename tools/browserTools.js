@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { chromium } from 'playwright';
+import { loadChromium } from '../src/core/browser/playwright-loader.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
@@ -23,7 +23,7 @@ function createStructuredResponse(success, data = null, error = null, meta = {})
     success,
     ...(data !== null && { data }),
     ...(error && { error }),
-    meta: { timestamp: Date.now(), ...meta }
+    meta: { timestamp: Date.now(), ...meta },
   };
 }
 
@@ -39,7 +39,7 @@ function isValidUrl(url) {
 function isValidSelector(selector) {
   if (!selector || typeof selector !== 'string' || selector.trim() === '') return false;
   const dangerous = ['javascript:', 'data:', 'vbscript:'];
-  return !dangerous.some(d => selector.toLowerCase().startsWith(d));
+  return !dangerous.some((d) => selector.toLowerCase().startsWith(d));
 }
 
 function isValidScript(script) {
@@ -50,9 +50,9 @@ function isValidScript(script) {
     'constructor.prototype',
     'constructor"]["prototype',
     "constructor']['prototype",
-    'eval('
+    'eval(',
   ];
-  return !dangerous.some(d => normalized.includes(d));
+  return !dangerous.some((d) => normalized.includes(d));
 }
 
 function getProjectRoot() {
@@ -99,16 +99,23 @@ function isValidCookie(cookie) {
   if (typeof cookie.name !== 'string' || cookie.name.trim() === '') return false;
   if (typeof cookie.value !== 'string') return false;
   if (cookie.url !== undefined) return isValidUrl(cookie.url);
-  return typeof cookie.domain === 'string' && cookie.domain.trim() !== '' && (cookie.path === undefined || typeof cookie.path === 'string');
+  return (
+    typeof cookie.domain === 'string' &&
+    cookie.domain.trim() !== '' &&
+    (cookie.path === undefined || typeof cookie.path === 'string')
+  );
 }
 
 function touchSession(sessionId) {
   if (sessionLifecycles.has(sessionId)) {
     clearTimeout(sessionLifecycles.get(sessionId));
   }
-  sessionLifecycles.set(sessionId, setTimeout(() => {
-    closeSession(sessionId);
-  }, IDLE_TIMEOUT_MS));
+  sessionLifecycles.set(
+    sessionId,
+    setTimeout(() => {
+      closeSession(sessionId);
+    }, IDLE_TIMEOUT_MS)
+  );
 }
 
 function getSession(sessionId) {
@@ -129,12 +136,13 @@ async function getSharedBrowser() {
   }
 
   if (!sharedBrowserLaunch) {
-    sharedBrowserLaunch = chromium.launch({ headless: true })
-      .then(browser => {
+    sharedBrowserLaunch = loadChromium()
+      .then((chromium) => chromium.launch({ headless: true }))
+      .then((browser) => {
         sharedBrowser = browser;
         return browser;
       })
-      .catch(error => {
+      .catch((error) => {
         sharedBrowser = null;
         throw error;
       })
@@ -167,7 +175,7 @@ async function getOrCreateSession(sessionId) {
       const browser = await getSharedBrowser();
       const context = await browser.newContext({
         viewport: DEFAULT_VIEWPORT,
-        userAgent: DEFAULT_USER_AGENT
+        userAgent: DEFAULT_USER_AGENT,
       });
       const page = await context.newPage();
       sessions.set(sessionId, { context, page, createdAt: Date.now() });
@@ -190,14 +198,14 @@ async function closeSession(sessionId) {
   if (pendingSession) {
     try {
       await pendingSession;
-    } catch { }
+    } catch {}
   }
   const session = sessions.get(sessionId);
   if (session) {
     try {
       if (session.page) await session.page.close().catch(() => {});
       if (session.context) await session.context.close().catch(() => {});
-    } catch { }
+    } catch {}
     sessions.delete(sessionId);
   }
   if (sessionLifecycles.has(sessionId)) {
@@ -259,24 +267,31 @@ export async function navigateToUrl({ sessionId, url, waitUntil = 'load' }) {
     if (error) {
       return createStructuredResponse(false, null, error);
     }
-    const response = await session.page.goto(url, {
-      waitUntil,
-      timeout: DEFAULT_TIMEOUT
-    }).catch(err => {
-      return createStructuredResponse(false, null, `Navigation failed: ${err.message}`);
-    });
+    const response = await session.page
+      .goto(url, {
+        waitUntil,
+        timeout: DEFAULT_TIMEOUT,
+      })
+      .catch((err) => {
+        return createStructuredResponse(false, null, `Navigation failed: ${err.message}`);
+      });
 
     if (!response || response.ok() === false) {
-      return createStructuredResponse(false, null, `HTTP error: ${response?.status() || 'unknown'}`, {
-        url: session.page.url(),
-        status: response?.status() || null
-      });
+      return createStructuredResponse(
+        false,
+        null,
+        `HTTP error: ${response?.status() || 'unknown'}`,
+        {
+          url: session.page.url(),
+          status: response?.status() || null,
+        }
+      );
     }
 
     return createStructuredResponse(true, {
       url: session.page.url(),
       title: await session.page.title(),
-      status: response.status()
+      status: response.status(),
     });
   } catch (error) {
     return createStructuredResponse(false, null, error.message);
@@ -310,7 +325,11 @@ export async function clickElement({ sessionId, selector, timeout = 5000 }) {
       return createStructuredResponse(false, null, `Invalid selector: ${selector}`);
     }
     if (!Number.isFinite(timeout) || timeout < 0 || timeout > DEFAULT_TIMEOUT) {
-      return createStructuredResponse(false, null, `timeout must be between 0 and ${DEFAULT_TIMEOUT}`);
+      return createStructuredResponse(
+        false,
+        null,
+        `timeout must be between 0 and ${DEFAULT_TIMEOUT}`
+      );
     }
     const { session, error } = getSession(sessionId);
     if (error) {
@@ -372,13 +391,17 @@ export async function evaluateJavaScript({ sessionId, script }) {
       return createStructuredResponse(false, null, 'Script is required');
     }
     if (!isValidScript(script)) {
-      return createStructuredResponse(false, null, 'Script contains potentially dangerous patterns');
+      return createStructuredResponse(
+        false,
+        null,
+        'Script contains potentially dangerous patterns'
+      );
     }
     const { session, error } = getSession(sessionId);
     if (error) {
       return createStructuredResponse(false, null, error);
     }
-    const result = await session.page.evaluate(script).catch(err => {
+    const result = await session.page.evaluate(script).catch((err) => {
       return createStructuredResponse(false, null, `Script execution failed: ${err.message}`);
     });
     if (result && result.success === false) return result;
@@ -395,7 +418,11 @@ export async function takeScreenshot({ sessionId, path, fullPage = false }) {
       return createStructuredResponse(false, null, error);
     }
     if (path && !isSafeScreenshotPath(path)) {
-      return createStructuredResponse(false, null, 'Screenshot path must stay within the project root');
+      return createStructuredResponse(
+        false,
+        null,
+        'Screenshot path must stay within the project root'
+      );
     }
     const options = { fullPage };
     if (path) options.path = path;
@@ -403,7 +430,7 @@ export async function takeScreenshot({ sessionId, path, fullPage = false }) {
     return createStructuredResponse(true, {
       screenshot: buffer.toString('base64'),
       fullPage,
-      savedTo: path || null
+      savedTo: path || null,
     });
   } catch (error) {
     return createStructuredResponse(false, null, error.message);
@@ -419,7 +446,11 @@ export async function waitForSelector({ sessionId, selector, state = 'visible', 
       return createStructuredResponse(false, null, `Invalid selector state: ${state}`);
     }
     if (!Number.isFinite(timeout) || timeout < 0 || timeout > DEFAULT_TIMEOUT) {
-      return createStructuredResponse(false, null, `timeout must be between 0 and ${DEFAULT_TIMEOUT}`);
+      return createStructuredResponse(
+        false,
+        null,
+        `timeout must be between 0 and ${DEFAULT_TIMEOUT}`
+      );
     }
     const { session, error } = getSession(sessionId);
     if (error) {
@@ -469,7 +500,7 @@ export async function reloadPage({ sessionId, waitUntil = 'load' }) {
     await session.page.reload({ waitUntil });
     return createStructuredResponse(true, {
       url: session.page.url(),
-      title: await session.page.title()
+      title: await session.page.title(),
     });
   } catch (error) {
     return createStructuredResponse(false, null, error.message);
@@ -485,7 +516,7 @@ export async function goBack({ sessionId }) {
     await session.page.goBack();
     return createStructuredResponse(true, {
       url: session.page.url(),
-      title: await session.page.title()
+      title: await session.page.title(),
     });
   } catch (error) {
     return createStructuredResponse(false, null, error.message);
@@ -501,7 +532,7 @@ export async function goForward({ sessionId }) {
     await session.page.goForward();
     return createStructuredResponse(true, {
       url: session.page.url(),
-      title: await session.page.title()
+      title: await session.page.title(),
     });
   } catch (error) {
     return createStructuredResponse(false, null, error.message);
@@ -513,7 +544,7 @@ export async function waitForTimeout({ ms }) {
     if (typeof ms !== 'number' || ms < 0 || ms > 60000) {
       return createStructuredResponse(false, null, 'ms must be a number between 0 and 60000');
     }
-    await new Promise(r => setTimeout(r, ms));
+    await new Promise((r) => setTimeout(r, ms));
     return createStructuredResponse(true, { waited: ms });
   } catch (error) {
     return createStructuredResponse(false, null, error.message);
@@ -529,13 +560,13 @@ export async function getElements({ sessionId, selector }) {
     if (error) {
       return createStructuredResponse(false, null, error);
     }
-    const results = await session.page.$$eval(selector, nodes =>
+    const results = await session.page.$$eval(selector, (nodes) =>
       nodes.slice(0, 100).map((node, index) => ({
         index,
         tag: node.tagName || '',
         id: node.id || '',
         classes: node.className || '',
-        text: node.textContent?.trim() || ''
+        text: node.textContent?.trim() || '',
       }))
     );
     return createStructuredResponse(true, { elements: results, count: results.length });
@@ -595,7 +626,11 @@ export async function setCookies({ sessionId, cookies }) {
       return createStructuredResponse(false, null, 'cookies must be an array');
     }
     if (!cookies.every(isValidCookie)) {
-      return createStructuredResponse(false, null, 'Each cookie must include name, value, and either url or domain');
+      return createStructuredResponse(
+        false,
+        null,
+        'Each cookie must include name, value, and either url or domain'
+      );
     }
     const { session, error } = getSession(sessionId);
     if (error) {
@@ -611,6 +646,6 @@ export async function setCookies({ sessionId, cookies }) {
 export function getActiveSessions() {
   return createStructuredResponse(true, {
     sessions: Array.from(sessions.keys()),
-    count: sessions.size
+    count: sessions.size,
   });
 }

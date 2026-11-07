@@ -49,6 +49,7 @@ async function runTests() {
   if (failed > 0) {
     process.exit(1);
   }
+  process.exit(0);
 }
 
 test('Port Registry - File exists check', async () => {
@@ -178,16 +179,19 @@ test('Health Check Endpoint Test', async () => {
   let healthCheckResult = null;
 
   try {
-    const { startServer } = await import('../server.js');
-    await startServer({ silent: true });
+    const { startServer, stopServer } = await import('../server.js');
+    const started = await startServer({ silent: true });
     serverStarted = true;
+    const targetPort = started?.port || process.env.PORT || 4000;
 
-    const response = await fetch('http://localhost:4000/health');
+    const response = await fetch(`http://localhost:${targetPort}/health`);
     healthCheckResult = await response.json();
 
     assert(healthCheckResult.status === 'ok', 'Health check should return status ok');
     assert(healthCheckResult.version, 'Health check should return version');
     assert(typeof healthCheckResult.uptime === 'number', 'Health check should return uptime');
+
+    await stopServer().catch(() => {});
   } catch (error) {
     if (!serverStarted) {
       console.log('  Note: Server not started, skipping health check test');

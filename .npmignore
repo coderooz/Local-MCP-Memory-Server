@@ -1,0 +1,42 @@
+# Fail-safe defense-in-depth exclusions for npm packaging
+# Prevents sensitive or ephemeral files within allowed directories from being packaged
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Databases, WAL/SHM files, locks
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.dump
+*.bson
+data/
+
+# Ephemeral scratch and test files
+scratch/
+temp/
+tmp/
+*.tmp
+*.log
+logs/
+.backups/
+backups/
+
+# Git and IDE metadata
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

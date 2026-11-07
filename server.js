@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import dotenv from 'dotenv';
 import express from 'express';
 import { initializeDatabase, disconnectDatabase } from './src/core/database/sqlite/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadEnvironment } from './src/core/config/load-env.js';
+import { getPackageInfo } from './src/core/cli/package-info.js';
 
 import { initLogger, logError, logInfo } from './shared/utils/logger.js';
 import {
@@ -123,12 +124,11 @@ import {
 } from './src/core/session/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-dotenv.config({
-  path: path.join(__dirname, '.env'),
-  quiet: true,
-});
+const envResult = loadEnvironment();
+for (const issue of envResult.issues) {
+  process.stderr.write(`[MCP Config] [WARN] ${issue}\n`);
+}
 
 const DB_NAME = process.env.MCP_DB_NAME || 'mcp-memory';
 const DEFAULT_PORT = Number(process.env.PORT || 0);
@@ -2047,7 +2047,7 @@ app.get('/health', async (req, res) => {
     uptime: Math.floor((Date.now() - SERVER_START_TIME) / 1000),
     uptimeFormatted: formatUptime((Date.now() - SERVER_START_TIME) / 1000),
     timestamp: new Date().toISOString(),
-    version: '2.6.0',
+    version: getPackageInfo().version,
     server: 'local-mcp-memory',
     project: activeProjectName || process.env.MCP_PROJECT || 'local-mcp-memory',
     pid: process.pid,
@@ -2127,7 +2127,7 @@ app.get('/health/detailed', async (_req, res) => {
       .then((m) => ({ portRegistry: m.getPortRegistry().getStatus() }))
       .catch(() => ({})),
     server: {
-      version: '2.6.0',
+      version: getPackageInfo().version,
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
@@ -3158,6 +3158,8 @@ export async function startServer({
       setCurrentProject(projectName);
       activeProjectName = projectName;
 
+      const requestedPort = port > 0 ? port : null;
+
       const runtimeFromFile = readRuntimeFile(projectName);
       if (runtimeFromFile) {
         const runtimeValidation = await validateRuntime(runtimeFromFile, {
@@ -3166,11 +3168,16 @@ export async function startServer({
           requireSignature: true,
         });
 
-        if (runtimeValidation.valid && runtimeFromFile.pid !== process.pid) {
+        const portMatches = !requestedPort || runtimeFromFile.port === requestedPort;
+        if (runtimeValidation.valid && runtimeFromFile.pid !== process.pid && portMatches) {
           activeServerPort = runtimeFromFile.port;
           activeRuntimeSignature = runtimeFromFile.signature;
           process.env.MCP_SERVER_URL = `http://localhost:${runtimeFromFile.port}`;
           process.env.PORT = String(runtimeFromFile.port);
+          if (!silent) {
+            process.stderr.write(`MCP Server running on port ${runtimeFromFile.port}\n`);
+            process.stderr.write(`[MCP] Reused existing runtime file at: ${getRuntimeFilePath()}\n`);
+          }
           return {
             app: null,
             db: null,
@@ -3191,11 +3198,16 @@ export async function startServer({
           requireSignature: true,
         });
 
-        if (recoveredValidation.valid && recoveredRuntime.pid !== process.pid) {
+        const portMatches = !requestedPort || recoveredRuntime.port === requestedPort;
+        if (recoveredValidation.valid && recoveredRuntime.pid !== process.pid && portMatches) {
           activeServerPort = recoveredRuntime.port;
           activeRuntimeSignature = recoveredRuntime.signature;
           process.env.MCP_SERVER_URL = `http://localhost:${recoveredRuntime.port}`;
           process.env.PORT = String(recoveredRuntime.port);
+          if (!silent) {
+            process.stderr.write(`MCP Server running on port ${recoveredRuntime.port}\n`);
+            process.stderr.write(`[MCP] Reused recovered server on port: ${recoveredRuntime.port}\n`);
+          }
           return {
             app: null,
             db: null,
@@ -3218,7 +3230,6 @@ export async function startServer({
       await logInfo('SQLite database connected', { dbName: 'mcp-memory' });
 
       const portManager = getPortManager();
-      const requestedPort = port > 0 ? port : null;
       let allocatedPort = await portManager.findAvailablePort(requestedPort);
       if (!allocatedPort) {
         throw new Error('No available ports in configured range');

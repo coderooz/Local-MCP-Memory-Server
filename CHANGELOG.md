@@ -6,7 +6,76 @@ This project follows a structured change history to track architectural evolutio
 
 ---
 
-## [v2.6.0] - MCP Management & Registry
+## [v2.6.1] - Release Engineering, Repository Governance & Production Hardening (2026-11-07)
+
+### Added
+- **Single Source of Truth (SSOT) Versioning Architecture** (`src/core/cli/package-info.js`):
+  - Dynamic runtime version resolution reading authoritatively from `package.json`.
+  - Added `tests/version-ssot-test.js` (7/7 assertions) enforcing version parity across CLI, serverInfo, and HTTP endpoints.
+- **Dedicated CI/CD Release Automation** (`.github/workflows/publish-npm.yml`, `.github/workflows/release.yml`):
+  - Automated secure npm distribution using `NPM_TOKEN` repository secret with provenance and public access configuration.
+  - Multi-OS (Ubuntu, Windows) and multi-version (Node 20.x, 22.x) test matrix in `.github/workflows/ci.yml`.
+- **Comprehensive Documentation Hub & Developer SOPs** (`docs/`):
+  - Centralized Documentation Hub (`docs/README.md`), CLI reference (`docs/cli-reference.md`), Configuration (`docs/configuration.md`), and Multi-Agent integration (`docs/mcp-integration.md`).
+  - Developer SOPs in `docs/development/` (`testing-guide.md`, `adding-mcp-tool.md`, `adding-agent-adapter.md`).
+  - Project Reference Index (`.workspace/PRI/`) and Logic Flow Index (`.workspace/LFI/`).
+  - Automated cross-file documentation validator (`scripts/verify-docs-consistency.mjs`, 90/90 passing checks).
+- **Workspace Governance & Multi-Agent Compatibility** (`tests/workspace-governance-test.mjs`):
+  - Automated workspace governance test suite validating `.agent/` context completeness, root bootstrap compatibility files, relative markdown links, and zero secrets.
+
+### Changed
+- **Packaging & Repository Hygiene**:
+  - Fortified `.gitignore` with 33 specific exclusion patterns covering SQLite WAL/SHM files, local databases, dumps, and ephemeral scratch spaces.
+  - Implemented `.npmignore` defense-in-depth denylist to secure npm tarball contents.
+- **Contributor & Security Governance**:
+  - Overhauled `SECURITY.md` (RSK-02 retired) with v2.6.x security disclosures, loopback binding, JWT/API-key authentication, and AES-256-GCM token encryption.
+  - Overhauled `README.md` (RSK-08 retired) with verified port 3799 documentation and complete setup guides for 8 AI coding agents.
+  - Overhauled `CONTRIBUTING.md` with strict Node >=20.0.0, pure ESM standards, stdio hygiene, and PR review lifecycles.
+
+### Fixed
+- **CI Workflow ESM Resolution Defect** (`.github/workflows/ci.yml` / RSK-06):
+  - Fixed syntax check and package validation by replacing CommonJS `require('./package.json')` with ESM `fs.readFileSync`.
+- **Uncontrolled Tagging Hazard** (`.github/workflows/auto-tag.yml` / RSK-01):
+  - Decommissioned uncontrolled git push trigger on `package.json` changes and enforced strict pre-tag test validation.
+- **Runtime Version Drift** (`mcp-server.js`, `server.js`):
+  - Eliminated hardcoded version strings in favor of dynamic resolution from `package-info.js`.
+
+---
+
+## [v2.6.0] - Production Readiness, Global CLI Distribution & Multi-Agent Integration (2026-11-05)
+
+### Added
+
+- **Global CLI Entry Point** (`bin/cli.js`):
+  - Packaged canonical binary `local-mcp-memory` with aliases `mcp-memory` and `local-memory-mcp`
+  - 17 production CLI commands: `init`, `start`, `stop`, `status`, `doctor`, `config`, `update`, `uninstall`, `migrate`, `search`, `store`, `create-task`, `list-tasks`, `create-issue`, `list-issues`, `list-agents`, `health`
+  - Added `--dry-run` flag support to `init` command
+- **Multi-Agent Configuration System** (`src/core/setup/agent-configs.js`, `src/core/setup/jsonc.js`):
+  - Automated discovery and registration across 6 AI agent clients: OpenCode (`opencode.json`), OpenAI Codex CLI (`config.toml`), Claude Desktop (`claude_desktop_config.json`), Cursor (`mcp.json`), Windsurf (`mcp_config.json`), Cline (`cline_mcp_settings.json`)
+  - AST-safe comment-preserving JSONC parser preventing configuration degradation
+  - Automatic timestamped backup creation (`.bak`) before any file write
+- **System Diagnostics Runner** (`src/core/cli/doctor.js`):
+  - Validates Node.js runtime version, SQLite connectivity, port availability, agent registrations, and file permissions
+- **MongoDB to SQLite Migration Pipeline** (`src/core/migration/mongo-to-sqlite.js`):
+  - Safe data transfer from legacy MongoDB collections to embedded SQLite tables with transaction rollback protection and FTS5 re-indexing
+- **Runtime Resilience & Concurrency Hardening**:
+  - Dead-PID file lock detection and recovery (`acquireFileLock` in `core/config/runtime-state.js` validates PID liveness via `isValidPID` and clears stale locks)
+  - Port congruence check (`portMatches`) in `server.js` preventing cross-port hijacking and state contamination
+  - Dynamic port range negotiation (`47000..47020`) with backward-compatible port `4000` fallback
+  - Comprehensive resilience test suite (`tests/mcp-resilience-test.js`, 19 assertions) added to `npm test` workflow
+- **Documentation & Release Artifacts**:
+  - Full suite of 11 distribution reports in `.reports/Global-Distribution/` (Executive Summary through Release Readiness Report)
+
+### Fixed
+
+- Fixed startup lock deadlock (`Failed to acquire lock: startup`) caused by unreleased `.lock` files from terminated processes
+- Fixed cross-port hijacking in `server.js` when reusing existing runtime files with mismatched ports
+- Fixed FTS search token query syntax for hyphenated keywords in SQLite full-text search
+- Fixed `EPERM` vs `ESRCH` misclassification on Windows during PID liveness checks
+
+---
+
+## [v2.6.0-rc1] - MCP Management & Registry
 
 ### Added
 

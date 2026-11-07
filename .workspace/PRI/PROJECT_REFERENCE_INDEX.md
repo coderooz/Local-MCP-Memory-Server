@@ -2,7 +2,7 @@
 
 **Project:** local-mcp-memory
 **Version:** 2.6.0
-**Last Updated:** 2026-10-17
+**Last Updated:** 2026-11-05
 **Status:** Active
 
 ---
@@ -12,8 +12,8 @@
 | Field              | Value                                                                    |
 | ------------------ | ------------------------------------------------------------------------ |
 | Created            | 2026-09-19                                                               |
-| Last Updated       | 2026-10-17                                                               |
-| Last Verified      | 2026-10-17                                                               |
+| Last Updated       | 2026-11-05                                                               |
+| Last Verified      | 2026-11-05                                                               |
 | Verification Type  | FULL                                                                     |
 | Canonical Location | `.workspace/PRI/PROJECT_REFERENCE_INDEX.md`                              |
 | Companion          | `.workspace/LFI/LOGIC_FLOW_INDEX.md`                                     |
@@ -65,8 +65,8 @@ local-mcp-memory/
 ├── mcp-integration-tools.js   # Integration tool definitions
 ├── migrate-project-id.js      # Project ID migration utility
 │
-├── bin/                       # CLI entry point
-│   └── cli.js                 # Commander-based CLI (13 commands)
+├── bin/                       # CLI entry point (local-mcp-memory, aliases: mcp-memory, local-memory-mcp)
+│   └── cli.js                 # Commander-based CLI (17 commands: init, start, stop, doctor, status, etc.)
 │
 ├── dashboard/                 # Visual dashboard interface
 │   ├── index.html             # Dashboard web UI
@@ -77,8 +77,16 @@ local-mcp-memory/
 │   │   ├── auth/              # Authentication system (JWT + API keys)
 │   │   │   ├── index.js       # AuthManager class + middleware
 │   │   │   └── routes.js      # Auth HTTP routes
-│   │   ├── database/          # SQLite database layer
-│   │   └── mcp/               # MCP protocol infrastructure
+│   │   ├── database/          # SQLite database layer (better-sqlite3)
+│   │   │   └── sqlite/        # 31 tables, WAL mode, FTS5 virtual tables
+│   │   ├── paths/             # Cross-platform application data & config paths
+│   │   ├── config/            # User config and environment loading
+│   │   ├── setup/             # AI agent configuration adapters (JSONC, TOML, JSON)
+│   │   ├── cli/               # CLI commands logic (doctor, install-state, api-client)
+│   │   ├── migration/         # MongoDB-to-SQLite migration pipeline with backups
+│   │   ├── mcp/               # MCP protocol infrastructure
+│   │   ├── mcp-registry/      # External MCP server registry and JSON-RPC proxy
+│   │   └── execution/         # Execution sandbox subsystem
 │   ├── domains/               # Domain services (10 domains)
 │   └── interfaces/            # API routes + MCP tool definitions
 │
@@ -100,8 +108,18 @@ local-mcp-memory/
 ├── assets/                    # Static assets (alert.mp3)
 ├── data/                      # Runtime data directory
 ├── .github/                   # CI/CD, issue templates, dependabot, CODEOWNERS
+├── .agent/                    # Canonical AI Agent Workspace (rules, context, maps, adapters, schemas)
 ├── .opencode/                 # OpenCode project reference (legacy PRI)
-└── .workspace/                 # PRI/LFI governance reference (canonical)
+└── .workspace/                # Canonical Engineering Workspace
+    ├── PRI/                   # Project Reference Index (canonical)
+    ├── LFI/                   # Logic Flow Index (canonical)
+    ├── reports/               # All Campaign and Audit Reports (Sole Canonical Source)
+    ├── resources/             # Deep technical documentation and domain guides
+    ├── decisions/             # Architecture Decision Records (ADRs)
+    ├── specifications/        # Technical specifications
+    ├── plans/                 # Execution and migration roadmaps
+    ├── templates/             # Engineering document templates
+    └── archive/               # Historical and superseded artifacts
 ```
 
 ---
@@ -137,10 +155,65 @@ Contains:
 - `models.js` — Data models (MongoDB-compatible API)
 - `sqlite/` — SQLite embedded module
   - `connection.js` — SQLite connection (WAL, busy timeout, foreign keys)
-  - `schema.js` — Schema definitions (19 tables + FTS5)
+  - `schema.js` — Schema definitions (31 domain tables + FTS5 virtual tables & sync triggers)
   - `query-builder.js` — MongoDB→SQLite query translator
   - `collection.js` — MongoDB-compatible Collection class
   - `index.js` — Main DB wrapper
+
+### `src/core/paths/`
+
+Type: OS-Native Path Resolution
+
+Purpose: Provides standard application directories across Windows (`AppData\Local`, `AppData\Roaming`), Linux (`~/.local/share`, `~/.config`), and macOS.
+
+Contains:
+
+- `index.js` — `getDataDir()`, `getConfigDir()`, `getRuntimeDir()`, `getCacheDir()`, `getDbPath()`, `describePaths()`, `ensureAppDirs()`
+
+### `src/core/config/`
+
+Type: Per-User and Environment Configuration
+
+Purpose: Manages persistent user configuration (`config.json`) and loads runtime environment variables.
+
+Contains:
+
+- `user-config.js` — User settings schema validation, load/save, and defaults
+- `load-env.js` — Safe environment loading with validation warnings
+
+### `src/core/setup/`
+
+Type: AI Agent Configuration Adapters
+
+Purpose: Discovers installed AI coding agents and non-destructively registers the MCP server with automatic backups.
+
+Contains:
+
+- `agent-configs.js` — Adapters for OpenCode, Codex, Claude Desktop, Cursor, Windsurf, Cline
+- `jsonc.js` — AST-aware JSONC parser preserving developer comments and formatting
+
+### `src/core/cli/`
+
+Type: CLI Command Orchestration
+
+Purpose: Houses diagnostic suites, package metadata, and install state tracking.
+
+Contains:
+
+- `package-info.js` — Package version and directory resolution
+- `api-client.js` — HTTP API communication with running server daemons
+- `install-state.js` — Tracking installed client adapters and install history
+- `doctor.js` — Comprehensive system diagnostic suite
+
+### `src/core/migration/`
+
+Type: MongoDB to SQLite Migration Pipeline
+
+Purpose: Seamless, safe migration from legacy v2.5.x MongoDB instances into embedded SQLite.
+
+Contains:
+
+- `mongo-to-sqlite.js` — Schema translation, snapshot backups, resume, dry-run, and rollback capabilities
 
 ### `src/core/auth/`
 
@@ -724,6 +797,21 @@ Database Flow:
 - Last Updated / Last Verified: 2026-10-07 → 2026-10-17
 
 **Verification:** SPOT (line counts vs disk; dashboard section vs `dashboard/routes.js` and `dashboard/index.html`)
+
+### 2026-11-05
+
+**Change:** Global Distribution, CLI Packaging & Cross-Agent Production Readiness (v2.6.0)
+
+**Classification:** UPDATED
+
+**Updated:**
+- CLI: Canonical binary `local-mcp-memory` with aliases `mcp-memory` and `local-memory-mcp`, featuring 17 operational commands (including `init`, `start`, `stop`, `doctor`, `status`, `config`, `update`, `uninstall`, `migrate`)
+- Init CLI: Added `--dry-run` flag support across `init` and `agent-configs`
+- Added core modules: `src/core/paths/`, `src/core/config/`, `src/core/setup/`, `src/core/cli/`, `src/core/migration/`
+- SQLite Database: Expanded schema to 31 domain tables with full foreign keys and FTS5 synchronization triggers
+- Agent Adapters: Added non-destructive, AST-preserving configuration adapters for OpenCode, Codex, Claude Desktop, Cursor, Windsurf, Cline
+- Connection Resilience: Added Windows dead-PID file-lock recovery (`isValidPID`), orphaned `.lock` auto-reclaim, and port mismatch detection in `server.js`
+- Test Suites: Passed 133 / 133 tests with zero failures across `check`, `db`, `e2e`, `migration`, `conformance`, and `resilience`
 
 ### 2026-10-07
 

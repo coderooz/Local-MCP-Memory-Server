@@ -1,0 +1,48 @@
+{
+  "serverName": "local-mcp-memory",
+  "protocolVersion": "2024-11-05",
+  "serverVersion": "2.6.0",
+  "capabilities": {
+    "tools": {
+      "totalTools": 63,
+      "categories": [
+        "memory_management",
+        "task_orchestration",
+        "session_context",
+        "collaboration_locks",
+        "activity_streams",
+        "browser_automation",
+        "system_status"
+      ]
+    },
+    "resources": {
+      "subscribe": true,
+      "listChanged": true
+    },
+    "prompts": {
+      "listChanged": false
+    },
+    "logging": {
+      "levels": [
+        "debug",
+        "info",
+        "notice",
+        "warning",
+        "error",
+        "critical"
+      ]
+    }
+  },
+  "storageEngines": {
+    "sqlite": {
+      "driver": "better-sqlite3",
+      "status": "production-ready",
+      "tables": 16,
+      "wal": true
+    },
+    "mongodb": {
+      "driver": "mongodb-native",
+      "status": "legacy-migration-source-only"
+    }
+  }
+}

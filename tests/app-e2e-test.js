@@ -26,7 +26,9 @@ const ROOT = path.resolve(__dirname, '..');
 
 const PORT = Number(process.env.E2E_PORT || 3799);
 const DB_PATH = path.join(ROOT, 'data', 'test-app-e2e.db');
-const USERS_FILE = path.join(ROOT, 'data', 'users.json');
+// Per-user config/secrets are isolated from the real machine config so the
+// test never creates a real admin account or overwrites the developer's keys.
+const HOME_DIR = path.join(ROOT, 'data', 'test-app-e2e-home');
 const DATA_DIR = path.join(ROOT, 'data');
 
 let base = `http://127.0.0.1:${PORT}`;
@@ -86,7 +88,6 @@ async function runTests() {
   console.log('=== Application E2E Tests (DB -> UI) ===\n');
 
   // Pre-state snapshot so cleanup can restore the workspace exactly
-  const usersExisted = fs.existsSync(USERS_FILE);
   const runtimeFilesBefore = new Set(
     fs
       .readdirSync(ROOT)
@@ -96,9 +97,15 @@ async function runTests() {
   for (const suffix of ['', '-wal', '-shm']) {
     rmForce(DB_PATH + suffix);
   }
+  fs.rmSync(HOME_DIR, { recursive: true, force: true });
 
   // ---- spawn the real server ----
-  const spawnEnv = { ...process.env, PORT: String(PORT), MCP_DB_PATH: DB_PATH };
+  const spawnEnv = {
+    ...process.env,
+    PORT: String(PORT),
+    MCP_DB_PATH: DB_PATH,
+    LOCAL_MCP_MEMORY_HOME: HOME_DIR,
+  };
   // Clean identity: the runtime/config file name must resolve from this
   // project, never from an outer MCP_PROJECT value.
   delete spawnEnv.MCP_PROJECT;
@@ -314,7 +321,7 @@ async function runTests() {
     for (const suffix of ['', '-wal', '-shm']) {
       rmForce(DB_PATH + suffix);
     }
-    if (!usersExisted) rmForce(USERS_FILE);
+    fs.rmSync(HOME_DIR, { recursive: true, force: true });
     const runtimeFilesAfter = fs.existsSync(ROOT) ? fs.readdirSync(ROOT) : [];
     for (const f of runtimeFilesAfter) {
       if (
@@ -327,8 +334,7 @@ async function runTests() {
     if (fs.existsSync(DATA_DIR)) {
       // lock files from the project-lock helper
       for (const f of fs.readdirSync(DATA_DIR)) {
-        if (f.endsWith('.lock') && !usersExisted && f === 'users.json.lock')
-          rmForce(path.join(DATA_DIR, f));
+        if (f.endsWith('.lock')) rmForce(path.join(DATA_DIR, f));
       }
     }
   }

@@ -7,7 +7,8 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../database/sqlite/index.js';
-import { proxyRequest, TIMEOUTS, resetCircuitBreaker } from './proxy.js';
+import { TIMEOUTS, resetCircuitBreaker } from './proxy.js';
+import { call as mcpCall, closeSession, resetSession } from './session.js';
 import { encryptAuthConfig, decryptAuthConfig } from './crypto.js';
 
 const TABLE = 'mcp_servers';
@@ -73,7 +74,7 @@ export async function registerServer(config) {
     metadata: JSON.stringify(config.metadata || {}),
     version: 1,
     createdAt: ts,
-    updatedAt: ts,
+    updatedAt: ts
   };
 
   await col.insertOne(doc);
@@ -92,6 +93,7 @@ export async function unregisterServer(serverId) {
   await col.deleteOne({ server_id: serverId });
   clearDiscoveredTools(serverId);
   resetCircuitBreaker(serverId);
+  resetSession(serverId);
   return { success: true, server_id: serverId, name: existing.name };
 }
 
@@ -117,7 +119,7 @@ export async function getServer(serverId) {
 
   return {
     ...server,
-    auth_config: maskAuth(decryptForDisplay(server.auth_config)),
+    auth_config: maskAuth(decryptForDisplay(server.auth_config))
   };
 }
 
@@ -139,7 +141,7 @@ export async function getServerRaw(serverId) {
 
   return {
     ...server,
-    auth_config: decryptAuthConfig(server.auth_config),
+    auth_config: decryptAuthConfig(server.auth_config)
   };
 }
 
@@ -159,7 +161,7 @@ export async function listServers(filters = {}) {
 
   return servers.map((s) => ({
     ...s,
-    auth_config: maskAuth(decryptForDisplay(s.auth_config)),
+    auth_config: maskAuth(decryptForDisplay(s.auth_config))
   }));
 }
 
@@ -184,7 +186,7 @@ export async function updateServer(serverId, updates) {
     'health',
     'capabilities',
     'tags',
-    'metadata',
+    'metadata'
   ];
 
   const setOps = { updatedAt: now(), version: (existing.version || 1) + 1 };
@@ -206,9 +208,14 @@ export async function updateServer(serverId, updates) {
 
   await col.findOneAndUpdate({ server_id: serverId }, { $set: setOps });
 
-  // A changed endpoint invalidates accumulated breaker history.
+  // A changed endpoint or credential invalidates accumulated breaker history
+  // and any negotiated session.
   if (updates.url !== undefined && updates.url !== existing.url) {
     resetCircuitBreaker(serverId);
+    resetSession(serverId);
+  }
+  if (updates.auth_config !== undefined || updates.auth_type !== undefined) {
+    resetSession(serverId);
   }
 
   return getServer(serverId);
@@ -228,7 +235,7 @@ export async function connectToServer(serverId) {
     return {
       success: false,
       error:
-        'stdio servers cannot be connected via HTTP proxy. Metadata-only registration available.',
+        'stdio servers cannot be connected via HTTP proxy. Metadata-only registration available.'
     };
   }
 
@@ -244,8 +251,8 @@ export async function connectToServer(serverId) {
       health: {
         lastCheck: now(),
         latency: 0,
-        errorCount: 0,
-      },
+        errorCount: 0
+      }
     });
     // Populate dynamic tool cache
     setDiscoveredTools(serverId, server.name, tools.tools || []);
@@ -254,7 +261,7 @@ export async function connectToServer(serverId) {
       server_id: serverId,
       status: 'connected',
       tools: tools.tools || [],
-      toolCount: (tools.tools || []).length,
+      toolCount: (tools.tools || []).length
     };
   } catch (err) {
     await updateServer(serverId, {
@@ -262,26 +269,29 @@ export async function connectToServer(serverId) {
       health: {
         lastCheck: now(),
         latency: null,
-        errorCount: (server.health?.errorCount || 0) + 1,
-      },
+        errorCount: (server.health?.errorCount || 0) + 1
+      }
     });
     return {
       success: false,
       error: err.message || 'Connection failed',
-      server_id: serverId,
+      server_id: serverId
     };
   }
 }
 
 export async function disconnectFromServer(serverId) {
-  const server = await getServer(serverId);
+  const server = await getServerRaw(serverId);
   if (!server) {
     return { success: false, error: 'Server not found' };
   }
 
+  // End the remote Streamable HTTP session (best effort) before forgetting it.
+  await closeSession(server);
+
   await updateServer(serverId, {
     status: 'registered',
-    capabilities: [],
+    capabilities: []
   });
 
   clearDiscoveredTools(serverId);
@@ -299,7 +309,7 @@ export async function getServerStatus(serverId) {
     type: server.type,
     status: server.status,
     health: server.health,
-    capabilities: server.capabilities,
+    capabilities: server.capabilities
   };
 }
 
@@ -321,14 +331,8 @@ export async function discoverTools(serverId) {
     throw new Error('Server URL not configured');
   }
 
-  // Send MCP tools/list request to the remote server
-  const response = await proxyRequest(
-    server,
-    {
-      method: 'tools/list',
-    },
-    TIMEOUTS.discovery
-  );
+  // Send MCP tools/list using an initialized Streamable HTTP session.
+  const response = await mcpCall(server, 'tools/list', {}, TIMEOUTS.discovery);
 
   const tools = response?.result?.tools || [];
 
@@ -336,8 +340,8 @@ export async function discoverTools(serverId) {
   await updateServer(serverId, {
     capabilities: tools.map((t) => ({
       name: t.name,
-      description: t.description,
-    })),
+      description: t.description
+    }))
   });
 
   return { tools, count: tools.length };
@@ -356,7 +360,7 @@ export async function proxyToolCall(serverId, toolName, args = {}) {
   if (server.type === 'stdio') {
     return {
       success: false,
-      error: 'stdio servers cannot be proxied via HTTP',
+      error: 'stdio servers cannot be proxied via HTTP'
     };
   }
 
@@ -365,14 +369,12 @@ export async function proxyToolCall(serverId, toolName, args = {}) {
   }
 
   try {
-    const result = await proxyRequest(
+    const result = await mcpCall(
       server,
+      'tools/call',
       {
-        method: 'tools/call',
-        params: {
-          name: toolName,
-          arguments: args,
-        },
+        name: toolName,
+        arguments: args
       },
       TIMEOUTS.toolCall
     );
@@ -383,8 +385,8 @@ export async function proxyToolCall(serverId, toolName, args = {}) {
         health: {
           lastCheck: now(),
           latency: 0,
-          errorCount: 0,
-        },
+          errorCount: 0
+        }
       });
     }
 
@@ -392,7 +394,7 @@ export async function proxyToolCall(serverId, toolName, args = {}) {
       success: true,
       server_id: serverId,
       tool_name: toolName,
-      result: result?.result || result,
+      result: result.result
     };
   } catch (err) {
     // Increment error count
@@ -401,8 +403,8 @@ export async function proxyToolCall(serverId, toolName, args = {}) {
       health: {
         lastCheck: now(),
         latency: null,
-        errorCount: (server.health?.errorCount || 0) + 1,
-      },
+        errorCount: (server.health?.errorCount || 0) + 1
+      }
     });
 
     return {
@@ -411,7 +413,7 @@ export async function proxyToolCall(serverId, toolName, args = {}) {
       tool_name: toolName,
       error: err.message,
       ...(err.code ? { code: err.code } : {}),
-      ...(err.retryAfterMs !== undefined ? { retry_after_ms: err.retryAfterMs } : {}),
+      ...(err.retryAfterMs !== undefined ? { retry_after_ms: err.retryAfterMs } : {})
     };
   }
 }
@@ -432,32 +434,32 @@ export async function checkServerHealth(serverId) {
 
   const start = Date.now();
   try {
-    await proxyRequest(server, { method: 'ping' }, TIMEOUTS.health);
+    await mcpCall(server, 'ping', {}, TIMEOUTS.health);
     const latency = Date.now() - start;
 
     await updateServer(serverId, {
       status: 'connected',
-      health: { lastCheck: now(), latency, errorCount: 0 },
+      health: { lastCheck: now(), latency, errorCount: 0 }
     });
 
     return {
       server_id: serverId,
       status: 'connected',
       latency,
-      lastCheck: now(),
+      lastCheck: now()
     };
   } catch (err) {
     const errorCount = (server.health?.errorCount || 0) + 1;
     await updateServer(serverId, {
       status: 'error',
-      health: { lastCheck: now(), latency: null, errorCount },
+      health: { lastCheck: now(), latency: null, errorCount }
     });
 
     return {
       server_id: serverId,
       status: 'error',
       error: err.message,
-      errorCount,
+      errorCount
     };
   }
 }
@@ -468,7 +470,7 @@ export async function getHealthSummary() {
     server_id: s.server_id,
     name: s.name,
     status: s.status,
-    health: s.health,
+    health: s.health
   }));
 }
 
@@ -538,8 +540,8 @@ export function getDiscoveredTools() {
         inputSchema: tool.inputSchema || { type: 'object', properties: {} },
         _mcp_registry: {
           server_id: serverId,
-          original_name: tool.name,
-        },
+          original_name: tool.name
+        }
       });
     }
   }
@@ -562,7 +564,7 @@ export function parseProxiedToolName(toolName) {
   if (parts.length < 3) return null;
   return {
     server_id: parts[1],
-    original_name: parts.slice(2).join('__'),
+    original_name: parts.slice(2).join('__')
   };
 }
 
@@ -587,7 +589,7 @@ export function setDiscoveredTools(serverId, serverName, tools) {
     serverId,
     serverName,
     tools: tools || [],
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
 }
 

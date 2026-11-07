@@ -10,5 +10,11 @@
         "NODE_ENV": "development"
       }
     }
+  },
+  "server": {
+    "dynamicPort": true
+  },
+  "setup": {
+    "autoConfigure": true
   }
 }

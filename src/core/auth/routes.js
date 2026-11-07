@@ -4,7 +4,7 @@
  * Handles login, user registration, token refresh, and API key management.
  */
 
-import { getAuthManager, requireAuth, requireRole } from './index.js';
+import { getAuthManager, requireAuth } from './index.js';
 
 /**
  * Register auth routes on an Express app
@@ -32,7 +32,7 @@ export function registerAuthRoutes(app) {
 
     const token = auth.generateToken({
       username,
-      role: auth._users.get(username)?.role || 'user',
+      role: auth.getRole(username) || 'user',
     });
 
     res.json({
@@ -42,9 +42,12 @@ export function registerAuthRoutes(app) {
     });
   });
 
-  // POST /auth/register - Create new user (admin only in production)
+  // POST /auth/register - Create a new user
+  //
+  // The first account bootstraps the instance as `admin`. Every later account
+  // is created as `user`; the caller can never choose its own role.
   app.post('/auth/register', (req, res) => {
-    const { username, password, role } = req.body;
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({
@@ -60,8 +63,16 @@ export function registerAuthRoutes(app) {
       });
     }
 
+    if (typeof username !== 'string' || !/^[a-zA-Z0-9._-]{1,64}$/.test(username)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Username must be 1-64 characters (letters, digits, dot, underscore, hyphen).',
+      });
+    }
+
     try {
-      const user = auth.createUser(username, password, role || 'user');
+      const role = auth.hasUsers() ? 'user' : 'admin';
+      const user = auth.createUser(username, password, role);
       res.json({
         success: true,
         user,
@@ -124,10 +135,9 @@ export function registerAuthRoutes(app) {
     });
   });
 
-  // DELETE /auth/api-keys/:key - Revoke API key
+  // DELETE /auth/api-keys/:key - Revoke API key by keyId or plaintext key
   app.delete('/auth/api-keys/:key', requireAuth, (req, res) => {
-    const fullKey = req.params.key;
-    const revoked = auth.revokeApiKey(fullKey);
+    const revoked = auth.revokeApiKey(req.params.key);
 
     res.json({
       success: revoked,
@@ -137,13 +147,14 @@ export function registerAuthRoutes(app) {
 
   // GET /auth/health - Auth system health check
   app.get('/auth/health', (req, res) => {
+    const stats = auth.getStats();
     res.json({
       success: true,
       auth: {
         jwtEnabled: true,
         apiKeyEnabled: true,
-        userCount: auth._users.size,
-        keyCount: auth._apiKeys.size,
+        userCount: stats.userCount,
+        keyCount: stats.keyCount,
       },
     });
   });

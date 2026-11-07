@@ -7,161 +7,182 @@
 ![License](https://img.shields.io/github/license/coderooz/Local-MCP-Memory-Server)
 ![Node.js Version](https://img.shields.io/node/v/local-mcp-memory)
 ![npm Version](https://img.shields.io/npm/v/local-mcp-memory)
-![GitHub package.json version](https://img.shields.io/github/package-json/v/coderooz/Local-MCP-Memory-Server)
-[![codecov](https://codecov.io/gh/coderooz/Local-MCP-Memory-Server/branch/main/graph/badge.svg)](https://codecov.io/gh/coderooz/Local-MCP-Memory-Server)
 [![CI](https://github.com/coderooz/Local-MCP-Memory-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/coderooz/Local-MCP-Memory-Server/actions)
-[![CodeFactor](https://www.codefactor.io/repository/github/coderooz/Local-MCP-Memory-Server/badge)](https://www.codefactor.io/repository/github/coderooz/Local-MCP-Memory-Server)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
-Local MCP Memory Server is a SQLite-backed coordination layer for MCP clients that need more than isolated memory. It gives agents and humans a shared system for persistent context, project descriptors, tasks, issues, activity tracking, soft locks, and collaboration-safe state updates.
+**Local MCP Memory Server** is a persistent multi-agent memory and coordination engine implementing the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). Powered by embedded SQLite (`better-sqlite3`), it provides AI agents and humans with a shared, persistent context layer featuring full-text search, soft resource locks, project descriptors, task orchestration, issue tracking, and external MCP server proxying.
 
-Official Docs: https://coderooz.github.io/Local-MCP-Memory-Server/
+- **Current Version:** `v2.6.0`
+- **Documentation Hub:** [docs/README.md](docs/README.md)
+- **Official Web Docs:** https://coderooz.github.io/Local-MCP-Memory-Server/
 
 ---
 
-## Overview
+## Key Capabilities
 
-This project upgrades the usual "agent executes, user waits" flow into a safer collaboration model where agents can work in parallel with users and other agents without losing project context or silently trampling each other's changes.
+- **Persistent Agent Memory:** Store, retrieve, update, and rank context entries across agent sessions with full SQLite FTS5 full-text indexing.
+- **Multi-Agent Coordination:** Prevent conflicts using soft resource locks (`acquire_resource_lock`, `release_resource_lock`) and live activity streams (`record_activity`).
+- **Task & Issue Management:** Priority scoring, dependency tracking, and capability-aware task auto-assignment.
+- **External MCP Server Registry:** Register, connect, discover, and proxy calls to third-party MCP servers with AES-256-GCM encrypted credentials at rest.
+- **CLI & Auto-Configuration:** Automated setup for 8 AI coding agents (Antigravity, OpenCode, Codex, Claude, Cursor, Windsurf, Cline, Roo Code).
+- **Embedded Zero-Config Storage:** Uses local SQLite via `better-sqlite3` with Write-Ahead Logging (WAL) and enforced foreign key constraints. No external database server required.
+- **Security & Access Control:** Dual JWT and programmatic API-key authentication for HTTP APIs, loopback binding by default, and fail-closed local execution sandboxing.
 
-The stack is:
+---
 
-- MCP stdio transport in `mcp-server.js`
-- Express API in `server.js`
-- Embedded SQLite persistence (`better-sqlite3`, no external database service) for memory, versions, activity, locks, tasks, issues, messages, metrics, and project intelligence
+## Quickstart
 
-## Feature Highlights
+### Option 1: Global CLI Auto-Configuration (Recommended)
 
-- Project descriptor system for baseline project identity and rules
-- Persistent memory with ranking, lifecycle states, and version history
-- Live activity stream for agent and user-visible project tracking
-- Soft resource locks for files, modules, tasks, and other shared resources
-- Task orchestration with priority scoring, scheduling, and capability-aware auto-assignment
-- Issue and notes tracking linked to memory and tasks
-- Agent registry with heartbeat-based status tracking
-- Project map for reusable codebase structure knowledge
-- Context graph retrieval that links memory, tasks, issues, actions, versions, and related agents
-- Metrics for task completion, memory usage, and collaboration signals
-- MCP server registry to register, connect, discover, health-check, and JSON-RPC proxy external MCP servers
-- Web dashboard (`npm run start:dashboard`) for a visual overview
-- JWT + API-key authentication with `/auth/login`, `/auth/register`, and API-key management
-
-## Human + Agent Collaboration
-
-The server now supports safe parallel collaboration:
-
-- agents can publish live activity entries
-- agents can acquire soft locks before shared work
-- updates can include expected versions or timestamps for overlap detection
-- conflicting updates are surfaced as warnings instead of being hidden
-- task ownership and active locks help reduce accidental overlap
-
-This is designed to warn and coordinate, not hard-block humans.
-
-## Quick Start
-
-1. Install dependencies:
+Initialize the database and automatically configure all installed AI coding agents:
 
 ```bash
+npx local-mcp-memory init
+```
+
+Or install globally:
+
+```bash
+npm install -g local-mcp-memory
+local-mcp-memory init
+```
+
+The `init` command automatically:
+1. Detects your operating system and Node.js environment (`>=20.0.0`).
+2. Creates the per-user application directory (`~/.local-mcp-memory` or `%LOCALAPPDATA%\local-mcp-memory`) and initializes the SQLite database (`mcp-memory.db`).
+3. Auto-generates persistent security secrets (`MCP_MASTER_SECRET` and JWT signing secret).
+4. Auto-detects and configures **all 8 supported AI coding agents**:
+   - **Google Antigravity** (`mcp_config.json`)
+   - **OpenCode** (`opencode.json`)
+   - **OpenAI Codex CLI** (`config.toml`)
+   - **Claude Desktop** (`claude_desktop_config.json`)
+   - **Cursor** (`mcp.json`)
+   - **Windsurf** (`mcp_config.json`)
+   - **Cline** (`cline_mcp_settings.json`)
+   - **Roo Code** (`mcp_settings.json`)
+5. Preserves existing configuration comments and keys using an AST-safe parser, creating timestamped `.bak` backups.
+
+Run system diagnostics anytime to verify your environment:
+
+```bash
+local-mcp-memory doctor
+```
+
+---
+
+### Option 2: Local Developer Setup
+
+Clone the repository and run the server locally:
+
+```bash
+git clone https://github.com/coderooz/Local-MCP-Memory-Server.git
+cd Local-MCP-Memory-Server
 npm install
 ```
 
-2. Create `.env`:
-
-```env
-MCP_DB_PATH=./data/mcp-memory.db
-PORT=4000
-MCP_AGENT=codex
-MCP_PROJECT=local-mcp-server
-MCP_SCOPE=project
-MCP_SERVER_URL=http://localhost:4000
-```
-
-3. Run the API:
+Configure your local environment (`.env`):
 
 ```bash
-npm run start:api
+cp .env.example .env
 ```
 
-4. Run the MCP server:
+```env
+# Runtime database location (defaults to local data directory)
+MCP_DB_PATH=./data/mcp-memory.db
+
+# Optional port override (default is dynamic allocation 47000-47020)
+PORT=3799
+
+# Project and agent context
+MCP_PROJECT=local-mcp-memory
+MCP_AGENT=antigravity
+MCP_SCOPE=project
+
+# Optional master encryption secret for MCP registry tokens (AES-256-GCM)
+MCP_MASTER_SECRET=your-32-byte-master-secret-here
+```
+
+Start the MCP stdio server:
 
 ```bash
 npm start
 ```
 
-5. For editor integrations, prefer:
+Start the HTTP API server with optional Web Dashboard:
 
 ```bash
-node /absolute/path/to/mcp-shim.js
+npm run start:api
+# Or start with visual dashboard:
+npm run start:dashboard
 ```
 
-6. Run the production chaos gate:
-
-```bash
-node scripts/chaos-test.js
-```
-
-## Usage Summary
-
-Typical system-mode flow:
-
-1. Read the project descriptor
-2. Search memory
-3. Fetch tasks and messages
-4. Check recent activity and active locks
-5. Claim or update work
-6. Make the change
-7. Store reusable memory, log actions, and release locks
-
-Key MCP tools now include:
-
-- `set_project_descriptor`, `get_project_descriptor`
-- `store_context`, `search_context`, `update_context`, `get_connected_context`
-- `create_task`, `fetch_tasks`, `assign_task`, `update_task`
-- `create_issue`, `resolve_issue`, `fetch_issues`
-- `record_activity`, `fetch_activity`
-- `acquire_resource_lock`, `release_resource_lock`, `fetch_resource_locks`
-- `register_agent`, `heartbeat_agent`, `list_agents`
-- `create_project_map`, `fetch_project_map`
-- `fetch_metrics`, `log_action`, `get_logs`
-- `register_mcp_server`, `unregister_mcp_server`, `list_mcp_servers`, `get_mcp_server`
-- `connect_mcp_server`, `disconnect_mcp_server`, `proxy_mcp_call`, `discover_mcp_tools`, `get_mcp_health`
-
-## Documentation
-
-The `docs/` folder contains the GitHub Pages site and now covers:
-
-- system purpose and architecture
-- project descriptors and project identity
-- activity tracking and soft-lock collaboration
-- API and MCP tool reference
-- human + agent collaboration guidelines
-- reliability model and chaos validation (`docs/reliability.md`)
-
-Enable GitHub Pages on the repository and use `/docs` as the source to publish it.
-
-## Validation
-
-Run:
+Run the automated test suite (249 passing assertions):
 
 ```bash
 npm test
 ```
 
-Run release chaos validation:
+---
 
-```bash
-npm run chaos:test
-```
+## CLI Command Summary (17 Commands)
 
-The script prints a structured JSON report with:
+The `local-mcp-memory` CLI provides complete management and data operations:
 
-- protocol integrity (`stdio` JSON-RPC purity)
-- tool discovery and core-tool execution checks
-- multi-session isolation check
-- success/failure rates, error types, response-time stats
-- explicit `PASS`/`FAIL` release gate
+| Command | Category | Description |
+|---|---|---|
+| `init` | Setup | Initialize storage and auto-configure AI agent clients |
+| `start` | Lifecycle | Start the MCP server in foreground or background |
+| `stop` | Lifecycle | Stop running MCP server processes gracefully |
+| `status` | Lifecycle | Check server health, active PID, and listening port |
+| `doctor` | Diagnostics | Run comprehensive system and agent configuration diagnostics |
+| `config` | Configuration | View or modify global configuration (`path`, `get`, `set`) |
+| `update` | Maintenance | Verify database schema migrations and installation status |
+| `uninstall` | Maintenance | Safely remove MCP server from agent configurations |
+| `migrate` | Migration | Read-only inspection or execution of MongoDB-to-SQLite migration |
+| `search <query>` | Data | Query stored memory using SQLite FTS5 full-text search |
+| `store <content>` | Data | Store durable context or memory entry |
+| `create-task <title>` | Data | Create a project-scoped coordination task |
+| `list-tasks` | Data | List project tasks with optional status filtering |
+| `create-issue <title>` | Data | Log an issue, bug, or coordination blocker |
+| `list-issues` | Data | List open and resolved issues |
+| `list-agents` | Data | List registered agents and active heartbeat statuses |
+| `health` | Diagnostics | Probe the HTTP API server health endpoints |
+
+> For complete syntax, options, and PowerShell / POSIX examples for all 17 commands, see [CLI Reference](docs/cli-reference.md).
+
+---
+
+## Core MCP Tools (63 Tools Discovered)
+
+When connected to an AI agent via MCP, `local-mcp-memory` exposes 63 tools, including:
+
+- **Context & Memory:** `store_context`, `search_context`, `update_context`, `get_connected_context`, `delete_context`
+- **Project Intelligence:** `get_project_descriptor`, `set_project_descriptor`, `create_project_map`, `fetch_project_map`
+- **Coordination & Locks:** `acquire_resource_lock`, `release_resource_lock`, `fetch_resource_locks`, `record_activity`, `fetch_activity`
+- **Tasks & Issues:** `create_task`, `fetch_tasks`, `assign_task`, `update_task`, `create_issue`, `resolve_issue`, `fetch_issues`
+- **Agent Registry:** `register_agent`, `heartbeat_agent`, `list_agents`
+- **External MCP Registry:** `register_mcp_server`, `connect_mcp_server`, `discover_mcp_tools`, `proxy_mcp_call`, `get_mcp_health`
+
+> For full integration details, client configuration snippets, and tool parameters, see [MCP Integration Guide](docs/mcp-integration.md).
+
+---
+
+## Documentation Directory
+
+| Document | Purpose |
+|---|---|
+| [Documentation Hub](docs/README.md) | Centralized index of all user and developer documentation |
+| [CLI Reference](docs/cli-reference.md) | Complete reference for all 17 CLI commands with copy-pasteable examples |
+| [Configuration Guide](docs/configuration.md) | Exhaustive reference of environment variables and configuration files |
+| [MCP Integration Guide](docs/mcp-integration.md) | Client setup instructions for all 8 supported AI coding agents |
+| [Security Policy](SECURITY.md) | Security model, JWT/API-key auth, AES-256-GCM encryption, and reporting |
+| [Contributing Guide](CONTRIBUTING.md) | Guidelines for developers, PR lifecycle, and coding standards |
+| [Testing Guide](docs/development/testing-guide.md) | Instructions for running unit, conformance, resilience, and chaos tests |
+| [Adding an MCP Tool](docs/development/adding-mcp-tool.md) | Step-by-step developer guide for creating and registering new MCP tools |
+| [Adding an Agent Adapter](docs/development/adding-agent-adapter.md) | Guide for extending CLI `init` to support new AI agent clients |
+
+---
 
 ## License
 
-MIT
+This project is licensed under the [MIT License](LICENSE).

@@ -1,11 +1,13 @@
 {
   "name": "local-mcp-memory",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Persistent multi-agent memory server using MCP protocol with CLI, dashboard, and authentication",
   "main": "mcp-server.js",
   "type": "module",
   "bin": {
-    "mcp-memory": "./bin/cli.js"
+    "local-mcp-memory": "./bin/cli.js",
+    "mcp-memory": "./bin/cli.js",
+    "local-memory-mcp": "./bin/cli.js"
   },
   "exports": {
     ".": {
@@ -29,6 +31,7 @@
     "utils/",
     "tools/",
     "plugins/",
+    "dashboard/",
     "shared/",
     "mcp-server.js",
     "server.js",
@@ -37,6 +40,8 @@
     "agent-instruction.js",
     "mcp-integration-tools.js",
     "assets/",
+    ".env.example",
+    "mcp.config.json",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -46,7 +51,7 @@
     "memory",
     "multi-agent",
     "coordination",
-    "mongodb",
+    "sqlite",
     "ai",
     "agents",
     "context-management"
@@ -61,7 +66,7 @@
     "type": "git",
     "url": "https://github.com/coderooz/Local-MCP-Memory-Server"
   },
-  "homepage": "https://coderooz.github.io/Local-MCP-Memory-Server/",
+  "homepage": "https://coderooz.github.io/Local-MCP-Memory-Server",
   "bugs": {
     "url": "https://github.com/coderooz/Local-MCP-Memory-Server/issues",
     "email": "contact@coderooz.in"
@@ -74,20 +79,26 @@
     "start:api": "node server.js",
     "start:dashboard": "node server.js --dashboard",
     "cli": "node bin/cli.js",
+    "inspect": "npx @modelcontextprotocol/inspector node mcp-server.js",
     "migrate:project-id": "node migrate-project-id.js",
     "docs:screenshots": "node tests/generate-doc-screenshots.js",
-    "check": "node --check bin/cli.js && node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check core/mcp/models.js && node --check shared/utils/logger.js && node --check agent-instruction.js && node --check utils/projectIdentity.js && node --check utils/routeHandler.js && node --check utils/eventBus.js && node --check utils/coordinationEngine.js && node --check utils/collaborationEngine.js && node --check utils/activityTracker.js && node --check utils/memoryEngine.js && node --check utils/metrics.js && node --check utils/resetEngine.js && node --check docs/app.js && node --check tools/browserTools.js && node --check tools/index.js && node --check tools/store_context.js && node --check tools/emulatorTools.js && node --check tools/feedbackTools.js && node --check tools/chatTools.js && node --check tools/notificationTools.js && node --check plugins/emulator/index.js && node --check src/core/database/connection.js && node --check src/core/database/models.js && node --check src/core/auth/index.js && node --check src/core/auth/routes.js && node --check src/domains/memory/memory.service.js && node --check src/domains/feedback/feedback.service.js && node --check src/domains/chat/chat.service.js && node --check src/core/mcp/tool-registry.js && node --check src/core/mcp/tool-executor.js && node --check src/interfaces/mcp-tools/tool-definitions.js && node --check dashboard/routes.js && node --check src/core/mcp-registry/index.js && node --check src/core/mcp-registry/routes.js && node --check src/core/mcp-registry/proxy.js && node --check src/core/mcp-registry/crypto.js && node --check tools/mcpRegistryTools.js && node --check tests/mcp-registry-test.js && node --check src/core/database/sqlite/collection.js && node --check src/core/database/sqlite/query-builder.js && node --check src/core/database/sqlite/schema.js && node --check src/core/database/sqlite/connection.js && node --check tests/database-integrity-test.js && node --check tests/app-e2e-test.js",
+    "check": "node --check bin/cli.js && node --check mcp-server.js && node --check mcp-shim.js && node --check server.js && node --check startMemoryServer.js && node --check core/mcp/models.js && node --check shared/utils/logger.js && node --check agent-instruction.js && node --check utils/projectIdentity.js && node --check utils/routeHandler.js && node --check utils/eventBus.js && node --check utils/coordinationEngine.js && node --check utils/collaborationEngine.js && node --check utils/activityTracker.js && node --check utils/memoryEngine.js && node --check utils/metrics.js && node --check utils/resetEngine.js && node --check docs/app.js && node --check tools/browserTools.js && node --check tools/index.js && node --check tools/store_context.js && node --check tools/emulatorTools.js && node --check tools/feedbackTools.js && node --check tools/chatTools.js && node --check tools/notificationTools.js && node --check plugins/emulator/index.js && node --check src/core/database/connection.js && node --check src/core/database/models.js && node --check src/core/auth/index.js && node --check src/core/auth/routes.js && node --check src/domains/memory/memory.service.js && node --check src/domains/feedback/feedback.service.js && node --check src/domains/chat/chat.service.js && node --check src/core/mcp/tool-registry.js && node --check src/core/mcp/tool-executor.js && node --check src/interfaces/mcp-tools/tool-definitions.js && node --check dashboard/routes.js && node --check src/core/mcp-registry/index.js && node --check src/core/mcp-registry/routes.js && node --check src/core/mcp-registry/proxy.js && node --check src/core/mcp-registry/crypto.js && node --check tools/mcpRegistryTools.js && node --check tests/mcp-registry-test.js && node --check src/core/database/sqlite/collection.js && node --check src/core/database/sqlite/query-builder.js && node --check src/core/database/sqlite/schema.js && node --check src/core/database/sqlite/connection.js && node --check tests/database-integrity-test.js && node --check tests/app-e2e-test.js && node --check src/core/paths/index.js && node --check src/core/config/user-config.js && node --check src/core/config/load-env.js && node --check src/core/setup/jsonc.js && node --check src/core/setup/agent-configs.js && node --check src/core/cli/package-info.js && node --check src/core/cli/api-client.js && node --check src/core/cli/install-state.js && node --check src/core/cli/doctor.js && node --check src/core/migration/mongo-to-sqlite.js && node --check tests/migration-test.js && node --check src/core/mcp-registry/session.js && node --check src/core/browser/playwright-loader.js && node --check tests/fixtures/mcp-http-stub.js && node --check tests/mcp-protocol-conformance-test.js && node --check tests/version-ssot-test.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run check && npm run test:feedback && npm run test:chat && npm run test:mcp-registry && npm run test:db && npm run test:e2e",
+    "test": "npm run check && npm run test:ssot && npm run test:identity && npm run test:feedback && npm run test:chat && npm run test:mcp-registry && npm run test:conformance && npm run test:db && npm run test:e2e && npm run test:migration",
+    "test:ssot": "node --test tests/version-ssot-test.js",
+    "test:identity": "node --test tests/identity-reconciliation-test.js",
     "test:emulator": "node tests/emulator-plugin-test.js",
     "test:feedback": "node tests/feedback-system-test.js",
     "test:chat": "node tests/chat-system-test.js",
     "test:mcp-registry": "node tests/mcp-registry-test.js",
+    "test:conformance": "node tests/mcp-protocol-conformance-test.js",
     "test:db": "node tests/database-integrity-test.js",
     "test:e2e": "node tests/app-e2e-test.js",
+    "test:migration": "node tests/migration-test.js",
+    "test:resilience": "node tests/mcp-resilience-test.js",
     "test:isolation": "node tests/multi-project-isolation-test.js",
     "test:contract": "node tests/isolation-contract-test.js",
     "test:gaps": "node tests/isolation-gap-detectors-test.js",
@@ -108,6 +119,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
     "eslint": "^8.57.0",
     "prettier": "^3.2.0"
   }

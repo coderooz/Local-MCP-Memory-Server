@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentHandoff",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "outgoingAgent",
+    "status",
+    "nextSteps"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "outgoingAgent": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verificationStatus": {
+      "type": "string"
+    }
+  }
+}

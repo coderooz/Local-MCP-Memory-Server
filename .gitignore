@@ -175,6 +175,39 @@ logs/
 .mcp-port
 .mcp-port.lock
 
-# OpenCode workspace (contains node_modules)
+# Workspace (contains node_modules)
 .opencode/*
 !.opencode/reference/
+
+# Local databases, WAL/SHM journals, and locks
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Local backups, dumps, and archive directories
+.backups/
+backups/
+*.dump
+*.bson
+*.archive
+
+# Ephemeral scratch, temporary, and staging directories
+scratch/
+.workspace/scratch/
+temp/
+tmp/
+.workspace/temp/
+*.tmp
+.agent/scratch/
+.agent/temp/
+
+# Private keys, certificates, and credentials
+*.pem
+*.key
+*.cert
+*.crt

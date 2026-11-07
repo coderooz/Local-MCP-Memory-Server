@@ -153,7 +153,7 @@ class MCPPortRegistry extends EventEmitter {
     }
   }
 
-  async readPort() {
+  async readPort(options = {}) {
     try {
       const fileRuntime = readRuntimeFile(this._projectName);
       const runtime = fileRuntime || getRuntimeState();
@@ -164,19 +164,32 @@ class MCPPortRegistry extends EventEmitter {
         return null;
       }
 
-      const validation = await validateRuntime(runtime, {
-        expectedProject: this._projectName,
-        expectedSignature: runtime.signature,
-        requireSignature: true
-      });
+      const { checkHealth = false } = options;
+      if (checkHealth) {
+        const validation = await validateRuntime(runtime, {
+          expectedProject: this._projectName,
+          expectedSignature: runtime.signature,
+          requireSignature: true
+        });
 
-      if (!validation.valid) {
-        MCPLogger.stalePortDetected(runtime.port, runtime.pid, validation.reason);
-        await deleteRuntimeFile(this._projectName, { force: true });
-        await this.clearPort();
-        invalidateRuntime();
-        this._emit('port:stale', runtime);
-        return null;
+        if (!validation.valid) {
+          MCPLogger.stalePortDetected(runtime.port, runtime.pid, validation.reason);
+          await deleteRuntimeFile(this._projectName, { force: true });
+          await this.clearPort();
+          invalidateRuntime();
+          this._emit('port:stale', runtime);
+          return null;
+        }
+      } else {
+        const pidAlive = await this._isPidValid(runtime.pid);
+        if (!pidAlive) {
+          MCPLogger.stalePortDetected(runtime.port, runtime.pid, 'pid_not_alive');
+          await deleteRuntimeFile(this._projectName, { force: true });
+          await this.clearPort();
+          invalidateRuntime();
+          this._emit('port:stale', runtime);
+          return null;
+        }
       }
 
       updateRuntimeState(runtime);
@@ -256,7 +269,11 @@ class MCPPortRegistry extends EventEmitter {
   }
 
   getDefaultPorts() {
-    return getDiscoveryPorts();
+    const ports = getDiscoveryPorts();
+    if (!ports.includes(4000)) {
+      return [4000, ...ports];
+    }
+    return ports;
   }
 
   async discoverPort(fallbackPorts = null) {

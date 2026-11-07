@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "workspacePolicy": "canonical-split",
+  "version": "2.6.0",
+  "directories": {
+    ".agent": {
+      "purpose": "Shared AI agent instructions, policies, context, maps, and templates",
+      "writableByAgents": [
+        "memory/SESSION_LOG.md",
+        "memory/HANDOFF.md"
+      ],
+      "readOnlyRules": [
+        "instructions/*",
+        "config/*",
+        "schemas/*"
+      ]
+    },
+    ".workspace": {
+      "purpose": "Authoritative project engineering workspace",
+      "subdirectories": {
+        "reports": "All campaign, audit, and governance reports",
+        "resources": "Deep domain knowledge, architectural reference articles",
+        "decisions": "Architecture Decision Records (ADRs)",
+        "specifications": "Formal technical specifications",
+        "plans": "Execution and migration roadmaps",
+        "templates": "Engineering templates",
+        "archive": "Deprecated or superseded artifacts",
+        "PRI": "Project Reference Index",
+        "LFI": "Logic Flow Index"
+      }
+    },
+    "root": {
+      "purpose": "Source code, test suites, CLI entry points, and root bootstrap files",
+      "bootstrapFiles": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        "CODEX.md",
+        "OPENCODE.md",
+        ".clinerules"
+      ]
+    }
+  }
+}

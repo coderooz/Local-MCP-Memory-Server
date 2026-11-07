@@ -68,3 +68,20 @@
   - Created git release commit and release tag `v2.6.1`.
   - Authored 14 comprehensive final reports in `.workspace/reports/Final-Release-v2.6.1/`.
   - Updated all workspace master indexes and durable agent context.
+
+
+## 2026-11-07 — Campaign 11: Final v2.6.1 Release Verification, GitHub Issue Closure & Workflow Remediation
+- **Agent:** Google Antigravity
+- **Actions:**
+  - Modernized project Node.js engine from Node 20 to Node 22 LTS (Active) across `.nvmrc`, `package.json`, `package-lock.json`, `src/core/cli/doctor.js`, `CONTRIBUTING.md`, `README.md`, `DEVELOPMENT.md`.
+  - Pinned CI runner to `ubuntu-24.04` and `node-version: 22.x`, eliminating Ubuntu 26 preview Node 20 segfaults.
+  - Verified 100% green CI pipeline across all 6 jobs on GitHub Actions run ID `42348001909` (Security, Lint, Isolation, Tests, Syntax, Packaging).
+  - Verified live GitHub Release `v2.6.1` and release assets.
+  - Audited and verified actual npm registry status (`404 Not Found` due to npm account 2FA requirement `EOTP`).
+  - Audited compromised npm token incident, documented security zero-trust protocol and rotation instructions in Report 02.
+  - Reconciled and closed 28 GitHub issues (#54, #55, #56, #57, #58, #59, #37, #38, #39, #40, #45, #46, #47, #48, #49, #50, #60, #61, #63, #64, #96, #97, #99, #100, #101, #102, #103, #104) with detailed evidence comments.
+  - Reconciled and officially closed Milestones 8, 10, and 11 on GitHub.
+  - Added OTP input and Automation token support to `.github/workflows/publish-npm.yml`.
+  - Authored 12 closure reports in `.workspace/reports/Post-Release-Closure-v2.6.1/` (Reports 01 to 12).
+  - Synchronized `.workspace/INDEX.md`, `.workspace/reports/INDEX.md`, `.workspace/reports/README.md`, `.agent/context/CURRENT_STATE.md`, `.agent/context/ACTIVE_WORK.md`, `.agent/memory/HANDOFF.md`.
+  - Maintained zero modifications to protected v2.5.0 workspace and production MongoDB.

@@ -1,12 +1,16 @@
 # Active Engineering Work
 
-## Current Milestone: Campaign 10.4 — Final Release Engineering, Repository Governance & v2.6.1 Publication Concluded
-- **Consolidated Scope (Sprints C, D, E):**
-  - **CI/CD Security & Modernization (Sprint C):** Fixed ESM `require('./package.json')` defect in `.github/workflows/ci.yml` (RSK-06); expanded matrix across Node 20.x/22.x on Ubuntu and Windows (RSK-07); decommissioned dangerous auto-tag push trigger in `.github/workflows/auto-tag.yml` (RSK-01); created secure npm publish workflow `.github/workflows/publish-npm.yml` and release integration with `NPM_TOKEN` (RSK-03).
-  - **Contributor Governance & Repository Hygiene (Sprint D):** Fortified `.gitignore` with 33 rules; created `.npmignore` defense-in-depth denylist; verified multi-agent compatibility bootstrap files; zero leaked secrets confirmed.
-  - **Release Engineering & Publication (Sprint E):** Bumped version SSOT to `2.6.1` across `package.json`, `package-lock.json`, and dynamic runtime; executed full 16-suite test pipeline (344 assertions/checks, 100% pass); verified clean-room disposable package install from tarball; created tag `v2.6.1` and pushed release.
-  - Authored 14 comprehensive final reports in `.workspace/reports/Final-Release-v2.6.1/`.
-  - Verdict: **FULL SUCCESS / RELEASE COMPLETE & PUBLISHED**.
+## Current Milestone: Campaign 11 — Final v2.6.1 Release Verification, GitHub Issue Closure & Workflow Remediation Concluded
+- **Scope Executed**:
+  - **Node.js Engine Modernization**: Upgraded engine to Node.js 22 LTS (Active) across `.nvmrc`, `package.json`, `package-lock.json`, `doctor.js`, and all docs per user directive.
+  - **CI Runner Stabilization**: Pinned CI to `ubuntu-24.04` and `node-version: 22.x`, resolving Ubuntu 26 preview Node 20 segfaults. All 6 CI jobs passed in 1m 32s on run `42348001909`.
+  - **GitHub Issue Closure**: Verified and closed 28 issues across Milestones 11, 8, 10, 13, and 17 with evidence comments citing specific modules and test suites.
+  - **Milestone Reconciliation**: Reconciled and closed Milestone 8 (Audio Notification), Milestone 10 (Co-Browser), and Milestone 11 (Embedded Database) at 100% completion.
+  - **Security & Token Rotation Protocol**: Audited raw token exposure incident, documented zero-trust rotation instructions, and protected git history.
+  - **Authoritative Reporting**: Authored 12 closure reports under `.workspace/reports/Post-Release-Closure-v2.6.1/`.
+  - **Verdict**: **APPROVED WITH CONDITIONS — RELEASE EXISTS, LIMITED FOLLOW-UP REMAINS**.
 
-## Next Operational Step
-- Post-release monitoring and optional production migration activation (MongoDB to SQLite cutover when desired by user).
+## Follow-up Action Items for User / Operator
+1. Rotate compromised npm token on [npmjs.com](https://www.npmjs.com/) and create an Automation Token.
+2. Update GitHub repository secret `NPM_TOKEN` at `coderooz/Local-MCP-Memory-Server`.
+3. Trigger `.github/workflows/publish-npm.yml` to complete global package publication.

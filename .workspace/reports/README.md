@@ -16,6 +16,19 @@ This index serves as the centralized catalog and historical log of all engineeri
 .workspace/reports/
 ├── README.md                          <-- (This master index & log)
 ├── INDEX.md                           <-- (Quick navigation pointer)
+├── Post-Release-Closure-v2.6.1/       <-- Final Release Verification & Closure (Nov 07, 2026 - Campaign 11)
+│   ├── 01_RELEASE_STATE_AND_REGISTRY_VERIFICATION.md
+│   ├── 02_NPM_CREDENTIAL_ROTATION_STATUS.md
+│   ├── 03_GITHUB_ISSUE_AUDIT_AND_CLOSURE.md
+│   ├── 04_MILESTONE_RECONCILIATION.md
+│   ├── 05_GITHUB_ACTIONS_WORKFLOW_AUDIT.md
+│   ├── 06_WORKFLOW_REMEDIATION_AND_RUN_RESULTS.md
+│   ├── 07_REPOSITORY_HYGIENE_AND_GITIGNORE.md
+│   ├── 08_VERSION_AND_TEST_EVIDENCE_RECONCILIATION.md
+│   ├── 09_FINAL_PACKAGE_AND_SECURITY_VERIFICATION.md
+│   ├── 10_GIT_DELIVERY_RECORD.md
+│   ├── 11_REMAINING_ISSUES_AND_LIMITATIONS.md
+│   └── 12_FINAL_V2.6.1_CLOSURE_VERDICT.md
 ├── Final-Release-v2.6.1/              <-- Final Release Engineering & Publication (Nov 07, 2026 - Campaign 10.4)
 │   ├── 01_FINAL_BASELINE_AND_SCOPE.md
 │   ├── 02_GITHUB_SECRETS_AND_NPM_AUTH.md

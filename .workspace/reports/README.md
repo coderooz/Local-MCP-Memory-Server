@@ -16,6 +16,17 @@ This index serves as the centralized catalog and historical log of all engineeri
 .workspace/reports/
 ├── README.md                          <-- (This master index & log)
 ├── INDEX.md                           <-- (Quick navigation pointer)
+├── Global-Installation-v2.6.1/        <-- Global npm Install & Cutover (Nov 07, 2026 - Campaign 13)
+│   ├── 01_PRE_INSTALLATION_ENVIRONMENT_AUDIT.md
+│   ├── 02_NPM_PACKAGE_VERIFICATION.md
+│   ├── 03_GLOBAL_INSTALLATION_REPORT.md
+│   ├── 04_MCP_CLIENT_CONFIGURATION_REPORT.md
+│   ├── 05_LIVE_MCP_FUNCTIONAL_VERIFICATION.md
+│   ├── 06_MONGODB_BACKUP_AND_PRESERVATION_REPORT.md
+│   ├── 07_V2.5.0_RETIREMENT_REPORT.md
+│   ├── 08_FINAL_SYSTEM_VERIFICATION.md
+│   ├── 09_ROLLBACK_AND_RECOVERY_GUIDE.md
+│   └── 10_FINAL_MIGRATION_VERDICT.md
 ├── NPM-Publication-v2.6.1/            <-- npm v2.6.1 Publication & Audit (Nov 07, 2026 - Campaign 12)
 │   ├── 01_RELEASE_AND_TAG_RECONCILIATION.md
 │   ├── 02_NPM_CREDENTIAL_AND_AUTHENTICATION_AUDIT.md

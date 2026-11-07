@@ -1,17 +1,17 @@
-# Current State — local-mcp-memory v2.6.1 (Campaign 12 Audit Complete)
+# Current State — local-mcp-memory v2.6.1 (Global Migration Complete & v2.5.0 Retired)
 
 **Status Date:** 2026-11-07  
-**Current Milestone:** Campaign 12 — npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification  
-**Development Version:** `2.6.1` (Authoritative SSOT)  
-**Node.js Engine:** `>=22.0.0` (Active LTS)  
-**Release Status:** `PUBLICATION FAILED — BLOCKER IDENTIFIED` (Token lacks Bypass 2FA; package artifact 100% verified)  
+**Current Milestone:** Campaign 13 — Controlled Global Installation, MCP Cutover & Safe v2.5.0 Retirement  
+**Canonical Package:** `local-mcp-memory@2.6.1` (Published on npm Registry)  
+**Active Installation:** Global npm (`C:\Users\ranit\AppData\Roaming\npm\node_modules\local-mcp-memory`)  
+**Primary Database:** Embedded SQLite WAL (`C:\Users\ranit\AppData\Local\local-mcp-memory\mcp-memory.db`)  
+**Release Status:** `A. GLOBAL MIGRATION SUCCESSFUL — V2.5.0 RETIRED` (All 15 Acceptance Criteria Passed)  
 
-## 1. Readiness & Publication Summary
-- **GitHub Release Live**: `v2.6.1` is live at `https://github.com/coderooz/Local-MCP-Memory-Server/releases/tag/v2.6.1` linked to git tag `v2.6.1` (commit `6921592`).
-- **CI & Publication Workflow Status**:
-  - CI run #42348001909 is 100% green across all 6 jobs.
-  - Publish run #42377486532: Authenticated as `coderooz` via `npm whoami`, passed all 6 pre-publish checks, and failed at `npm publish` due to `npm error code EOTP` (account write 2FA requires OTP).
-- **Package Tarball Verification**: 100% clean-room test pass via `scripts/verify-disposable-package-install.mjs` (127 files, 63 tools, store/search context round-trip).
-- **Authentication Findings**: Token in GitHub secret `NPM_TOKEN` is authentic for user `coderooz`, but lacks the **"Bypass two-factor authentication (2FA) for publish actions"** setting on npmjs.com.
-- **Trusted Publishing (OIDC)**: Assessment completed in Report 08. Recommended as the long-term solution for v2.7+.
-- **Protected Instances**: Stable v2.5.0 instance (`C:\Code_Works\HTML_CSS_JS\workProjects\website\local-mcp-memory`) and production MongoDB remain 100% untouched.
+## 1. Environment & Migration Status
+- **Public npm Registry**: `local-mcp-memory@2.6.1` is live and published on `https://registry.npmjs.org/` (`dist-tags.latest = 2.6.1`).
+- **Global Installation**: Installed globally via `npm install -g local-mcp-memory@2.6.1`. Binaries `local-mcp-memory`, `mcp-memory`, and `local-memory-mcp` resolve in `C:\Users\ranit\AppData\Roaming\npm`.
+- **Global MCP Client Configuration**: Google Antigravity configuration (`.gemini/antigravity/mcp_config.json` and `.gemini/config/mcp_config.json`) updated to invoke global `node .../mcp-server.js` with `MCP_AGENT=antigravity`. Third-party `firebase-mcp-server` preserved.
+- **Real-World Verification**: 11/11 live MCP stdio tests passed (63 tools, store, search, update, agent, tasks, soft locks, restart persistence).
+- **MongoDB Historical Preservation**: Original database `mcp_memory` on `127.0.0.1:27017` remains 100% intact with all 29,854 documents. Separate verified JSONL backup created in `C:\Local-MCP-Memory-Backups\pre-v260-retirement\2026-11-07_20-01-20\`.
+- **v2.5.0 Decommissioning**: Full mirror archive preserved in `C:\Local-MCP-Memory-Backups\v250-retirement-archive\v250-full-backup\`. Obsolete v2.5.0 directory `C:\Code_Works\HTML_CSS_JS\workProjects\website\local-mcp-memory` cleanly retired and empty.
+- **Development Repository**: `C:\Code_Works\HTML_CSS_JS\workProjects\projects\local-mcp-memory` preserved intact.

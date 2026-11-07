@@ -100,3 +100,19 @@
   - Updated `README.md` to distinguish GitHub Release installation from npm registry installation.
   - Updated master indexes and durable agent context (`.agent/`, `.workspace/`).
   - Audited remaining 77 issues and produced v2.7+ engineering roadmap.
+
+
+## 2026-11-07 — Campaign 13: Controlled Global Installation, MCP Cutover & Safe v2.5.0 Retirement
+- **Agent:** Google Antigravity
+- **Actions:**
+  - Audited host environment: Windows 11, Node v24.21.0, npm 12.1.0, verified public npm release `local-mcp-memory@2.6.1`.
+  - Executed Phase B verification: downloaded package in disposable sandbox; verified all 3 bin aliases, CLI help/version, stdio MCP handshake (`mcp-memory-server@2.6.1`), 63 tools, store/search round-trip, and process restart persistence (15/15 checks passed).
+  - Executed Phase C: installed `local-mcp-memory@2.6.1` globally via npm. Verified `where.exe local-mcp-memory`, `mcp-memory`, `local-memory-mcp`. Executed `local-mcp-memory doctor` (7 passed, 1 warning, 0 failures).
+  - Executed Phase D: created timestamped backups (`.bak-20261107-200145`) of `mcp_config.json` in `.gemini/antigravity` and `.gemini/config`. Configured global invocation (`node .../mcp-server.js` with `MCP_AGENT=antigravity`), strictly preserving `firebase-mcp-server`.
+  - Executed Phase E: verified live MCP client operations (11/11 tests passed: initialize, tool discovery, store, search, update, agent registration, project map, tasks, advisory soft locks, error handling, restart persistence).
+  - Executed Phase F: verified 29,854 documents in MongoDB `mcp_memory`; generated verified external backup at `C:\Local-MCP-Memory-Backups\pre-v260-retirement\2026-11-07_20-01-20\` with SHA256 checksums; preserved original MongoDB untouched.
+  - Executed Phase G: created complete archive of `website/local-mcp-memory` in `C:\Local-MCP-Memory-Backups\v250-retirement-archive\v250-full-backup\`; safely decommissioned obsolete v2.5.0 application files (directory confirmed empty).
+  - Executed Phase H: final system verification passed across all 15 acceptance criteria.
+  - Authored 10 comprehensive reports in `.workspace/reports/Global-Installation-v2.6.1/`.
+  - Updated `.workspace/INDEX.md`, `.workspace/reports/INDEX.md`, `.workspace/reports/README.md`, `.agent/context/CURRENT_STATE.md`, `ACTIVE_WORK.md`, `KNOWN_LIMITATIONS.md`, `HANDOFF.md`.
+  - Final Verdict: **A. GLOBAL MIGRATION SUCCESSFUL — V2.5.0 RETIRED**.

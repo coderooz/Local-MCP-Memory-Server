@@ -1,16 +1,11 @@
 # Current Agent Handoff State
 
-- **Current Status:** Campaign 12 Completed — npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification.
+- **Current Status:** Campaign 13 Completed — Controlled Global Installation, MCP Cutover & Safe v2.5.0 Retirement.
 - **Active Agent:** Google Antigravity.
-- **Current Version:** `2.6.1` (Authoritative SSOT).
-- **Node.js Engine:** `>=22.0.0` (Active LTS).
-- **Current Release Status:** `PUBLICATION FAILED — BLOCKER IDENTIFIED`.
-- **Delivered in Campaign 12:**
-  - Full tag, release, and commit reconciliation (`v2.6.1` intact).
-  - Hardened `.github/workflows/publish-npm.yml` with version guard, duplicate protection, and provenance.
-  - Executed publish run #42377486532; confirmed token authenticates as `coderooz`.
-  - Discovered and diagnosed `EOTP` blocker: token requires 2FA bypass flag.
-  - Authored 9 reports in `.workspace/reports/NPM-Publication-v2.6.1/`.
-  - Evaluated 77 remaining GitHub issues and produced v2.7+ roadmap.
-- **Immediate Next Operational Step (for User):**
-  - Enable "Bypass 2FA for publish actions" on npmjs.com token (or create Classic Automation token) and update `NPM_TOKEN`, OR manually trigger `publish-npm.yml` providing current 6-digit OTP code.
+- **Current Version:** `2.6.1` (Canonical npm Release).
+- **Global Installation Path:** `C:\Users\ranit\AppData\Roaming\npm\node_modules\local-mcp-memory`.
+- **Database Engine:** Embedded SQLite (`%LOCALAPPDATA%\local-mcp-memory\mcp-memory.db`).
+- **Client Configuration:** `.gemini/antigravity/mcp_config.json` and `.gemini/config/mcp_config.json` configured to global server.
+- **Historical Data:** MongoDB `mcp_memory` preserved intact + verified external JSONL backup.
+- **Retirement Outcome:** v2.5.0 decommissioned; full mirror archive in `C:\Local-MCP-Memory-Backups\v250-retirement-archive\`.
+- **Operational Verdict:** `A. GLOBAL MIGRATION SUCCESSFUL — V2.5.0 RETIRED`.

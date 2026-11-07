@@ -1,16 +1,17 @@
 # Active Engineering Work
 
-## Current Milestone: Campaign 12 — npm v2.6.1 Publication, Trusted Publishing Assessment & Post-Publication Verification Concluded
+## Current Milestone: Campaign 13 — Controlled Global Installation, MCP Cutover & Safe v2.5.0 Retirement Concluded
 - **Scope Executed**:
-  - **Release State Verification**: Confirmed git tag `v2.6.1` pointing to `6921592` and GitHub Release `v2.6.1` live on GitHub.
-  - **Artifact & Clean-Room Verification**: Verified `local-mcp-memory@2.6.1` tarball (127 files, 309.7 kB) with 100% pass on disposable install, CLI execution, MCP stdio handshake, and memory round-trip.
-  - **Workflow Hardening**: Updated `.github/workflows/publish-npm.yml` (commit `df56f70`) with strict version guard (`2.6.1`), duplicate publish check, C++ native addon rebuild (`npm rebuild better-sqlite3`), and Sigstore provenance support.
-  - **Authentication Probe & Execution**: Triggered GitHub Actions run #42377486532; confirmed `NPM_TOKEN` authenticates as `coderooz` via `npm whoami`.
-  - **Blocker Identification**: Isolated failure to `npm error code EOTP` (account write 2FA requires OTP because Bypass 2FA was not enabled when generating the token on npmjs.com).
-  - **Trusted Publishing Assessment**: Documented GitHub Actions OIDC Trusted Publishing architecture and migration steps in Report 08.
-  - **Backlog Prioritization**: Evaluated remaining 77 issues and structured v2.7+ roadmap.
-  - **Verdict**: **PUBLICATION FAILED — BLOCKER IDENTIFIED**.
+  - **Environment Audit**: Inspected host Windows 11, Node v24.21.0, npm 12.1.0, services, and configs.
+  - **Published Package Verification**: Downloaded and verified `local-mcp-memory@2.6.1` in disposable sandbox from public npm registry (15/15 checks passed).
+  - **Global npm Installation**: Installed `local-mcp-memory@2.6.1` globally. Verified `where.exe local-mcp-memory`, `mcp-memory`, `local-memory-mcp`.
+  - **Client Configuration Cutover**: Created timestamped backups (`.bak-20261107-200145`) and configured Antigravity to invoke the global server, preserving `firebase-mcp-server`.
+  - **Real-World Functional Verification**: Passed 11/11 live MCP stdio tests across tool discovery (63 tools), storage, FTS5 search, agent registration, tasks, locks, and process restart persistence.
+  - **MongoDB Preservation & Backup**: Verified 29,854 documents across 16 collections in `mcp_memory`. Exported verified backup to `C:\Local-MCP-Memory-Backups\pre-v260-retirement\2026-11-07_20-01-20\`.
+  - **v2.5.0 Retirement**: Created mirror archive in `C:\Local-MCP-Memory-Backups\v250-retirement-archive\v250-full-backup\`. Decommissioned obsolete files in `website/local-mcp-memory`.
+  - **Authoritative Reporting**: Produced 10 reports under `.workspace/reports/Global-Installation-v2.6.1/`.
+  - **Verdict**: **A. GLOBAL MIGRATION SUCCESSFUL — V2.5.0 RETIRED**.
 
-## Immediate Blocker Resolution Options for User
-1. **Option A (Recommended)**: On npmjs.com, generate a Granular Access Token with **"Bypass two-factor authentication (2FA) for publish actions"** enabled (or a Classic **Automation** token), update GitHub secret `NPM_TOKEN`, and re-run workflow.
-2. **Option B**: Trigger `publish-npm.yml` manually via GitHub Actions console and input your live 6-digit 2FA code into the `otp` field.
+## Next Priorities (Post-Cutover)
+1. Optional MongoDB-to-SQLite production data reconciliation when scheduled.
+2. Advance v2.7+ engineering roadmap starting with Milestone 9 (Asynchronous CLI Subprocess Execution).

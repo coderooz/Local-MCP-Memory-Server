@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,19 +42,39 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm rebuild better-sqlite3
+
+      - name: Verify npm authentication
+        run: |
+          echo "Verifying npm registry authentication identity..."
+          npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run pre-publish verification checks
         run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Authoritative package version: $CURRENT_VERSION"
+          if [ "$CURRENT_VERSION" != "2.6.1" ]; then
+            echo "::error::Attempting to publish unexpected version $CURRENT_VERSION (expected 2.6.1)"
+            exit 1
+          fi
+          # Check duplicate publication
+          if npm view local-mcp-memory@$CURRENT_VERSION version >/dev/null 2>&1; then
+            echo "::notice::Version $CURRENT_VERSION is already published on npm registry."
+            exit 0
+          fi
           npm run check
           npm pack --dry-run
 
       - name: Publish to npm
         run: |
           if [ -n "${{ inputs.otp }}" ]; then
-            npm publish --access public --otp="${{ inputs.otp }}"
+            npm publish --access public --provenance --otp="${{ inputs.otp }}" || npm publish --access public --otp="${{ inputs.otp }}"
           else
-            npm publish --access public
+            npm publish --access public --provenance || npm publish --access public
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
